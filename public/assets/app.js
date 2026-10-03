@@ -20,6 +20,7 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const collator = new Intl.Collator("bn");
 
 const ICON = {
+  trash: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.75 4.25h10.5M6.25 4.25V3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75v1.25M4.25 4.25l.6 8.4a1 1 0 0 0 1 .93h4.3a1 1 0 0 0 1-.93l.6-8.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   logout: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 2.75H4A1.25 1.25 0 0 0 2.75 4v8A1.25 1.25 0 0 0 4 13.25h2M10.5 11 13.5 8l-3-3M13.25 8H6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   plus: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   x: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
@@ -117,6 +118,7 @@ async function firebaseBackend() {
       await b.commit();
     },
     rejectRequest: (uid) => F.updateDoc(d("requests", uid), { status: "rejected" }),
+    deleteRequest: (uid) => F.deleteDoc(d("requests", uid)),
     async isAdmin(user) {
       if (user.email === OWNER) return true;
       try { return (await F.getDoc(d("admins", user.email))).exists(); } catch { return false; }
@@ -227,6 +229,7 @@ function demoBackend() {
     watchOpenElections: (cb) => sub(() => cb(Object.values(st.elections).filter((e) => e.status === "open").map((e) => ({ ...e })))),
     watchRequests: (cb) => sub(() => cb(st.requests.map((r) => ({ ...r })))),
     async approveRequest(r) { st.members.push({ email: r.email, name: r.name }); st.requests = st.requests.filter((x) => x.uid !== r.uid); emit(); },
+    async deleteRequest(uid) { st.requests = st.requests.filter((x) => x.uid !== uid); emit(); },
     async rejectRequest(uid) { const r = st.requests.find((x) => x.uid === uid); if (r) r.status = "rejected"; emit(); },
     isAdmin: async (u) => u.email === OWNER || u.uid === "owner" || st.admins.some((a) => a.email === u.email),
     async castVote(eid, cid, user) {
@@ -771,8 +774,8 @@ function votersTab() {
       <div class="scroll-box"><ul class="plain-list">${A.members.length ? A.members.map((m) => `<li><div class="who"><b>${esc(m.name || "—")}</b><span>${esc(m.email)}</span></div><button class="linkish" data-act="rm-member" data-v="${esc(m.email)}">বাদ দিন</button></li>`).join("") : `<li><div class="who"><span>এখনও কাউকে অনুমোদন দেওয়া হয়নি</span></div></li>`}</ul></div></div>
 
 
-    ${rejected.length ? `<details class="card"><summary style="cursor:pointer;font-weight:600">বাতিল করা আবেদন · ${bn(rejected.length)} জন</summary>
-      <ul class="plain-list" style="margin-top:8px">${rejected.map((r) => row(r, `<button class="btn sm" data-act="approve" data-v="${esc(r.uid)}">অনুমোদন দিন</button>`)).join("")}</ul></details>` : ""}
+    ${rejected.length ? `<details class="card" id="rej-details" ${A.rejOpen ? "open" : ""}><summary style="cursor:pointer;font-weight:600">বাতিল করা আবেদন · ${bn(rejected.length)} জন</summary>
+      <ul class="plain-list" style="margin-top:8px">${rejected.map((r) => row(r, `<button class="btn sm danger" data-act="ask-del-req" data-v="${esc(r.uid)}">${ICON.trash} মুছে ফেলুন</button><button class="btn sm" data-act="approve" data-v="${esc(r.uid)}">অনুমোদন দিন</button>`)).join("")}</ul></details>` : ""}
   </div>`;
 }
 
@@ -843,6 +846,7 @@ root.addEventListener("click", async (ev) => {
     case "approve": { const r = A.requests.find((x) => x.uid === v); if (r) adminRun(() => api.approveRequest(r), `${r.name || r.email} অনুমোদিত হয়েছেন`); break; }
     case "approve-all": { const list = A.requests.filter((x) => x.status === "pending"); adminRun(async () => { for (const r of list) await api.approveRequest(r); }, `${bn(list.length)} জন অনুমোদিত হয়েছেন`); break; }
     case "reject": adminRun(() => api.rejectRequest(v), "আবেদন বাতিল করা হয়েছে"); break;
+    case "ask-del-req": { const r = A.requests.find((x) => x.uid === v); if (!r) break; A.confirm = { title: "নামটি মুছে ফেলবেন?", body: `<b>${esc(r.name || r.email)}</b> (${esc(r.email)})-এর বাতিল করা আবেদন তালিকা থেকে মুছে যাবে। তিনি আবার ভোটার হিসেবে প্রবেশ করলে নতুন আবেদন হিসেবে “অনুমোদনের অপেক্ষায়” তালিকায় আসবেন।`, ok: "মুছে ফেলুন", danger: true, run: () => api.deleteRequest(r.uid), msg: "মুছে ফেলা হয়েছে" }; renderAdmin(); break; }
 
     // voter
     case "review": if (V.selected) { V.confirming = true; renderVoter(); } break;
@@ -891,6 +895,8 @@ root.addEventListener("click", async (ev) => {
     case "rm-admin": adminRun(() => api.removeAdmin(v), "অ্যাডমিন বাদ দেওয়া হয়েছে"); break;
   }
 });
+
+root.addEventListener("toggle", (ev) => { if (ev.target.id === "rej-details") A.rejOpen = ev.target.open; }, true);
 
 document.addEventListener("click", (ev) => {
   const pr = $("#profile");
