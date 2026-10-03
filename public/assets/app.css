@@ -587,6 +587,9 @@ h1 {
 }
 .plain-list li:last-child { border-bottom: 0; }
 .plain-list .who { min-width: 0; display: block; }
+.person { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.person .avatar { width: 38px; height: 38px; }
+.person .avatar b { font-size: 15px; }
 .plain-list .who b { display: block; font-weight: 500; overflow-wrap: anywhere; }
 .plain-list .who span { display: block; font-size: 12.5px; color: var(--ink-3); overflow-wrap: anywhere; }
 .scroll-box { max-height: 380px; overflow-y: auto; margin-inline: -4px; padding-inline: 4px; }

@@ -75,7 +75,13 @@ service cloud.firestore {
     // ── ভোটার তালিকা (ঐচ্ছিক) ─────────────────────
     match /members/{email} {
       allow read: if isAdmin() || (signedIn() && email == myEmail());
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      // অ্যাডমিন সব বদলাতে পারেন; সদস্য নিজে শুধু নিজের প্রোফাইল ছবির লিংক হালনাগাদ করতে পারেন
+      allow update: if isAdmin()
+        || (signedIn() && email == myEmail()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photo'])
+            && request.resource.data.photo is string
+            && request.resource.data.photo.size() <= 600);
     }
 
     // ── ভোটার নিবন্ধনের আবেদন ──────────────────
@@ -84,7 +90,8 @@ service cloud.firestore {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create: if signedIn()
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['email', 'name', 'status', 'at'])
+        && request.resource.data.keys().hasOnly(['email', 'name', 'photo', 'status', 'at'])
+        && (!('photo' in request.resource.data) || (request.resource.data.photo is string && request.resource.data.photo.size() <= 600))
         && request.resource.data.email == myEmail()
         && request.resource.data.name is string
         && request.resource.data.name.size() <= 100

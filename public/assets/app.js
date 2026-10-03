@@ -70,6 +70,8 @@ function errText(e) {
 const inAppBrowser = () => /FBAN|FBAV|FB_IAB|FBIOS|Instagram|Messenger|Line\/|MicroMessenger|imo|; wv\)/i.test(navigator.userAgent);
 const isAndroid = () => /Android/i.test(navigator.userAgent);
 
+const okPhoto = (u) => (typeof u === "string" && /^https:\/\//.test(u) && u.length <= 600 ? u : "");
+
 /* ── Firebase backend ────────────────────────────── */
 async function firebaseBackend() {
   const base = `https://www.gstatic.com/firebasejs/${FB_VERSION}`;
@@ -106,14 +108,15 @@ async function firebaseBackend() {
     watchElections: (cb, err) => F.onSnapshot(F.query(col("elections"), F.orderBy("createdAt", "desc")), (q) => cb(q.docs.map((x) => ({ id: x.id, ...x.data() }))), err),
     hasVoted: async (eid, uid) => (await F.getDoc(d("elections", eid, "voters", uid))).exists(),
     isMember: async (email) => (await F.getDoc(d("members", email))).exists(),
-    watchMember: (email, cb, err) => F.onSnapshot(d("members", email), (s) => cb(s.exists()), err),
+    watchMember: (email, cb, err) => F.onSnapshot(d("members", email), (s) => cb(s.exists(), s.exists() ? s.data() : null), err),
+    updateMyPhoto: (email, photo) => F.updateDoc(d("members", email), { photo }),
     watchRequest: (uid, cb, err) => F.onSnapshot(d("requests", uid), (s) => cb(s.exists() ? s.data() : null), err),
-    createRequest: (u) => F.setDoc(d("requests", u.uid), { email: u.email, name: (u.name || "").slice(0, 100), status: "pending", at: F.serverTimestamp() }),
+    createRequest: (u) => F.setDoc(d("requests", u.uid), { email: u.email, name: (u.name || "").slice(0, 100), photo: okPhoto(u.photo), status: "pending", at: F.serverTimestamp() }),
     watchOpenElections: (cb, err) => F.onSnapshot(F.query(col("elections"), F.where("status", "==", "open")), (q) => cb(q.docs.map((x) => ({ id: x.id, ...x.data() }))), err),
     watchRequests: (cb, err) => F.onSnapshot(col("requests"), (q) => cb(q.docs.map((x) => ({ uid: x.id, ...x.data(), at: x.data().at?.toMillis?.() || 0 }))), err),
     async approveRequest(r) {
       const b = F.writeBatch(db);
-      b.set(d("members", r.email), { name: r.name || "", approvedAt: F.serverTimestamp() });
+      b.set(d("members", r.email), { name: r.name || "", photo: okPhoto(r.photo), approvedAt: F.serverTimestamp() });
       b.delete(d("requests", r.uid));
       await b.commit();
     },
@@ -223,12 +226,13 @@ function demoBackend() {
     watchElections: (cb) => sub(() => cb(Object.values(st.elections).sort((a, b) => b.createdAt - a.createdAt).map((e) => ({ ...e })))),
     hasVoted: async (eid, uid) => (st.voters[eid] || []).some((v) => v.uid === uid),
     isMember: async (email) => st.members.some((m) => m.email === email),
-    watchMember: (email, cb) => sub(() => cb(st.members.some((m) => m.email === email))),
+    watchMember: (email, cb) => sub(() => { const m = st.members.find((x) => x.email === email); cb(!!m, m || null); }),
+    async updateMyPhoto(email, photo) { const m = st.members.find((x) => x.email === email); if (m) m.photo = photo; },
     watchRequest: (uid, cb) => sub(() => cb(st.requests.find((r) => r.uid === uid) || null)),
     async createRequest(u) { st.requests.push({ uid: u.uid, email: u.email, name: u.name, status: "pending", at: Date.now() }); emit(); },
     watchOpenElections: (cb) => sub(() => cb(Object.values(st.elections).filter((e) => e.status === "open").map((e) => ({ ...e })))),
     watchRequests: (cb) => sub(() => cb(st.requests.map((r) => ({ ...r })))),
-    async approveRequest(r) { st.members.push({ email: r.email, name: r.name }); st.requests = st.requests.filter((x) => x.uid !== r.uid); emit(); },
+    async approveRequest(r) { st.members.push({ email: r.email, name: r.name, photo: r.photo || "" }); st.requests = st.requests.filter((x) => x.uid !== r.uid); emit(); },
     async deleteRequest(uid) { st.requests = st.requests.filter((x) => x.uid !== uid); emit(); },
     async rejectRequest(uid) { const r = st.requests.find((x) => x.uid === uid); if (r) r.status = "rejected"; emit(); },
     isAdmin: async (u) => u.email === OWNER || u.uid === "owner" || st.admins.some((a) => a.email === u.email),
@@ -390,7 +394,9 @@ function startVoterSession() {
   clearVoterSubs();
   Object.assign(V, { member: undefined, request: undefined, requested: false, open: undefined, voted: {}, inBallot: null, popup: null, err: "" });
   if (!user) return;
-  voterSubs.push(api.watchMember(user.email, (m) => {
+  voterSubs.push(api.watchMember(user.email, (m, data) => {
+    const ph = okPhoto(user.photo);
+    if (m && data && ph && data.photo !== ph) api.updateMyPhoto(user.email, ph).catch(() => {});
     const was = V.member;
     V.member = m;
     if (m && was !== true) {
@@ -752,14 +758,18 @@ function actionsFor(e) {
   return b.join("");
 }
 
+function personPic(p) {
+  const initial = esc((p.name || p.email || "?").trim().charAt(0).toUpperCase());
+  const ph = okPhoto(p.photo);
+  return `<span class="avatar">${ph ? `<img src="${esc(ph)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<b>${initial}</b></span>`;
+}
 function votersTab() {
   const pending = A.requests.filter((r) => r.status === "pending");
   const rejected = A.requests.filter((r) => r.status === "rejected");
-  const row = (r, actions) => `<li><div class="who"><b>${esc(r.name || "নাম নেই")}</b><span>${esc(r.email)}</span></div><div class="row-gap">${actions}</div></li>`;
+  const row = (r, actions) => `<li><div class="person">${personPic(r)}<div class="who"><b>${esc(r.name || "নাম নেই")}</b><span>${esc(r.email)}</span></div></div><div class="row-gap">${actions}</div></li>`;
   return `<div style="padding-top:24px;max-width:720px" class="stack">
-    <div class="card"><div class="section-title"><h3>অনুমোদনের অপেক্ষায়</h3><span>${bn(pending.length)} জন${pending.length > 1 ? ` · <button class="linkish" data-act="approve-all">সবাইকে অনুমোদন দিন</button>` : ""}</span></div>
-      <p style="font-size:13px;margin:0 0 6px">ভোটার হিসেবে Google দিয়ে প্রবেশ করলে নাম এখানে আসে। চেনা সদস্য হলে অনুমোদন দিন, তখনই তিনি চলমান নির্বাচনে ভোট দিতে পারবেন।</p>
-      <ul class="plain-list">${pending.length ? pending.map((r) => row(r, `<button class="btn sm" data-act="reject" data-v="${esc(r.uid)}">বাতিল</button><button class="btn sm primary" data-act="approve" data-v="${esc(r.uid)}">অনুমোদন দিন</button>`)).join("") : `<li><div class="who"><span>নতুন কোনো আবেদন নেই</span></div></li>`}</ul></div>
+    <div class="card"><div class="section-title"><h3>অনুমোদিত ভোটার</h3><span>${bn(A.members.length)} জন</span></div>
+      <div class="scroll-box"><ul class="plain-list">${A.members.length ? A.members.map((m) => row(m, `<button class="linkish" data-act="rm-member" data-v="${esc(m.email)}">বাদ দিন</button>`)).join("") : `<li><div class="who"><span>এখনও কাউকে অনুমোদন দেওয়া হয়নি</span></div></li>`}</ul></div></div>
 
     <div class="card stack"><div class="section-title"><h3>সদস্য সরাসরি যোগ করুন</h3><span>যোগ করা সদস্যরা আগে থেকেই অনুমোদিত থাকবেন</span></div>
       <form class="mem-form" id="mem-form" novalidate>
@@ -770,9 +780,9 @@ function votersTab() {
       <p class="hint" id="mem-msg" style="margin:0">সদস্য এই Gmail দিয়ে প্রথমবার প্রবেশ করলেই সরাসরি ভোট দিতে পারবেন।</p>
     </div>
 
-    <div class="card"><div class="section-title"><h3>অনুমোদিত ভোটার</h3><span>${bn(A.members.length)} জন</span></div>
-      <div class="scroll-box"><ul class="plain-list">${A.members.length ? A.members.map((m) => `<li><div class="who"><b>${esc(m.name || "—")}</b><span>${esc(m.email)}</span></div><button class="linkish" data-act="rm-member" data-v="${esc(m.email)}">বাদ দিন</button></li>`).join("") : `<li><div class="who"><span>এখনও কাউকে অনুমোদন দেওয়া হয়নি</span></div></li>`}</ul></div></div>
-
+    <div class="card"><div class="section-title"><h3>অনুমোদনের অপেক্ষায়</h3><span>${bn(pending.length)} জন${pending.length > 1 ? ` · <button class="linkish" data-act="approve-all">সবাইকে অনুমোদন দিন</button>` : ""}</span></div>
+      <p style="font-size:13px;margin:0 0 6px">ভোটার হিসেবে Google দিয়ে প্রবেশ করলে নাম এখানে আসে। চেনা সদস্য হলে অনুমোদন দিন, তখনই তিনি চলমান নির্বাচনে ভোট দিতে পারবেন।</p>
+      <ul class="plain-list">${pending.length ? pending.map((r) => row(r, `<button class="btn sm" data-act="reject" data-v="${esc(r.uid)}">বাতিল</button><button class="btn sm primary" data-act="approve" data-v="${esc(r.uid)}">অনুমোদন দিন</button>`)).join("") : `<li><div class="who"><span>নতুন কোনো আবেদন নেই</span></div></li>`}</ul></div>
 
     ${rejected.length ? `<details class="card" id="rej-details" ${A.rejOpen ? "open" : ""}><summary style="cursor:pointer;font-weight:600">বাতিল করা আবেদন · ${bn(rejected.length)} জন</summary>
       <ul class="plain-list" style="margin-top:8px">${rejected.map((r) => row(r, `<button class="btn sm danger" data-act="ask-del-req" data-v="${esc(r.uid)}">${ICON.trash} মুছে ফেলুন</button><button class="btn sm" data-act="approve" data-v="${esc(r.uid)}">অনুমোদন দিন</button>`)).join("")}</ul></details>` : ""}
