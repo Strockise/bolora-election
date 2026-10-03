@@ -176,8 +176,8 @@ b, strong { font-weight: 600; }
 .status i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); }
 .status.open { color: var(--accent); background: var(--accent-50); border-color: var(--accent-100); }
 .status.open i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-100); animation: pulse 2s ease-in-out infinite; }
-.status.closed { color: var(--danger); background: var(--danger-50); border-color: #FEE4E2; }
-.status.closed i { background: var(--danger); }
+.status.closed { color: var(--accent-600); background: var(--accent-50); border-color: var(--accent-100); }
+.status.closed i { background: var(--accent-600); }
 @keyframes pulse { 50% { box-shadow: 0 0 0 1px var(--accent-100); } }
 h1 {
   font-weight: 600;
@@ -460,6 +460,12 @@ h1 {
 .res .bar i { display: block; height: 100%; background: #C5D0CB; border-radius: 3px; transition: width .5s ease; }
 .res.lead .bar i { background: var(--accent); }
 .res.lead .rk { background: var(--accent); color: #fff; }
+
+.res-sec { margin-top: 32px; }
+.win { margin: 0 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; color: var(--ink); }
+.win b { font-weight: 600; }
+.win.tie { color: var(--warn-ink); font-size: 14px; }
+.win.none { color: var(--ink-3); font-size: 14px; }
 
 /* ── Admin: tabs ───────────────────────── */
 .tabs {

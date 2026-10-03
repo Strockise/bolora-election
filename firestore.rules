@@ -11,7 +11,7 @@ rules_version = '2';
 //   2. কে কাকে ভোট দিয়েছে তা কোথাও সংরক্ষিত হয় না। শুধু প্রত্যেক
 //      প্রার্থীর মোট সংখ্যা (count) এক করে বাড়ে।
 //   3. অ্যাডমিনরাও ভোটের সংখ্যা হাতে বদলাতে পারেন না।
-//   4. ফলাফল শুধু ভোটগ্রহণ শেষ হওয়ার পর দেখা যায়, ভোট চলাকালীন অ্যাডমিনও দেখতে পারেন না।
+//   4. ফলাফল শুধু ভোটগ্রহণ শেষ হওয়ার পর দেখা যায় (তখনই সবার জন্য প্রকাশিত); ভোট চলাকালীন অ্যাডমিনও দেখতে পারেন না।
 //
 //  ⚠ নিচের OWNER_EMAIL-এ মূল অ্যাডমিনের ইমেইল দিন (ছোট হাতের অক্ষরে)।
 //    public/config.js-এর ownerEmail-এর সাথে হুবহু মিল থাকতে হবে।
@@ -105,7 +105,7 @@ service cloud.firestore {
       // লিংকের কোড (নির্বাচনের id) জানলেই শুধু একটি নির্বাচন খোলা যায়;
       // সব নির্বাচনের তালিকা শুধু অ্যাডমিন দেখতে পারেন।
       allow get: if true;
-      allow list: if isAdmin() || (isMember() && resource.data.status == 'open');
+      allow list: if isAdmin() || (isMember() && resource.data.status in ['open', 'closed']);
       allow create: if isAdmin() && request.resource.data.status == 'draft';
       allow update: if isAdmin()
         && request.resource.data.status in ['draft', 'open', 'closed']
@@ -130,9 +130,9 @@ service cloud.firestore {
 
       // প্রার্থী-ভিত্তিক মোট ভোট (কে দিয়েছে তা নেই)
       match /tally/{cid} {
-        // ভোট চলাকালীন কেউই (অ্যাডমিনও) ফলাফল পড়তে পারেন না; ভোটগ্রহণ শেষ হলে অ্যাডমিন দেখেন
-        allow read: if (isAdmin() && election(eid).status == 'closed')
-          || (election(eid).status == 'closed' && election(eid).get('resultsPublic', false) == true);
+        // ভোট চলাকালীন কেউই (অ্যাডমিনও) ফলাফল পড়তে পারেন না;
+        // ভোটগ্রহণ শেষ হলেই ফলাফল অ্যাডমিন ও সব অনুমোদিত ভোটারের জন্য প্রকাশিত
+        allow read: if election(eid).status == 'closed' && (isAdmin() || isMember());
         allow create: if isAdmin()
           && cid in election(eid).candidateIds
           && request.resource.data.keys().hasOnly(['count'])

@@ -44,7 +44,7 @@ const ICON = {
 const STATUS = {
   draft: { cls: "", label: "খসড়া" },
   open: { cls: "open", label: "ভোটগ্রহণ চলছে" },
-  closed: { cls: "closed", label: "ভোটগ্রহণ শেষ" },
+  closed: { cls: "closed", label: "ফলাফল প্রকাশিত" },
 };
 const statusPill = (st) => `<span class="status ${STATUS[st]?.cls || ""}"><i></i>${STATUS[st]?.label || ""}</span>`;
 
@@ -112,6 +112,7 @@ async function firebaseBackend() {
     updateMyPhoto: (email, photo) => F.updateDoc(d("members", email), { photo }),
     watchRequest: (uid, cb, err) => F.onSnapshot(d("requests", uid), (s) => cb(s.exists() ? s.data() : null), err),
     createRequest: (u) => F.setDoc(d("requests", u.uid), { email: u.email, name: (u.name || "").slice(0, 100), photo: okPhoto(u.photo), status: "pending", at: F.serverTimestamp() }),
+    watchClosedElections: (cb, err) => F.onSnapshot(F.query(col("elections"), F.where("status", "==", "closed")), (q) => cb(q.docs.map((x) => ({ id: x.id, ...x.data(), closedMs: x.data().closedAt?.toMillis?.() || 0 }))), err),
     watchOpenElections: (cb, err) => F.onSnapshot(F.query(col("elections"), F.where("status", "==", "open")), (q) => cb(q.docs.map((x) => ({ id: x.id, ...x.data() }))), err),
     watchRequests: (cb, err) => F.onSnapshot(col("requests"), (q) => cb(q.docs.map((x) => ({ uid: x.id, ...x.data(), at: x.data().at?.toMillis?.() || 0 }))), err),
     async approveRequest(r) {
@@ -162,7 +163,7 @@ async function firebaseBackend() {
     },
     async closeElection(e) {
       const b = F.writeBatch(db);
-      b.update(d("elections", e.id), { status: "closed", closedAt: F.serverTimestamp() });
+      b.update(d("elections", e.id), { status: "closed", resultsPublic: true, closedAt: F.serverTimestamp() });
       b.set(d("elections", e.id, "meta", "box"), { pick: "", n: rid(20) });
       await b.commit();
     },
@@ -230,6 +231,7 @@ function demoBackend() {
     async updateMyPhoto(email, photo) { const m = st.members.find((x) => x.email === email); if (m) m.photo = photo; },
     watchRequest: (uid, cb) => sub(() => cb(st.requests.find((r) => r.uid === uid) || null)),
     async createRequest(u) { st.requests.push({ uid: u.uid, email: u.email, name: u.name, status: "pending", at: Date.now() }); emit(); },
+    watchClosedElections: (cb) => sub(() => cb(Object.values(st.elections).filter((e) => e.status === "closed").map((e) => ({ ...e })))),
     watchOpenElections: (cb) => sub(() => cb(Object.values(st.elections).filter((e) => e.status === "open").map((e) => ({ ...e })))),
     watchRequests: (cb) => sub(() => cb(st.requests.map((r) => ({ ...r })))),
     async approveRequest(r) { st.members.push({ email: r.email, name: r.name, photo: r.photo || "" }); st.requests = st.requests.filter((x) => x.uid !== r.uid); emit(); },
@@ -262,7 +264,7 @@ function demoBackend() {
       if (e.status === "draft") { st.tally[e.id] = {}; e.candidates.forEach((c) => (st.tally[e.id][c.id] = 0)); }
       st.elections[e.id].status = "open"; emit();
     },
-    async closeElection(e) { await wait(); st.elections[e.id].status = "closed"; emit(); },
+    async closeElection(e) { await wait(); Object.assign(st.elections[e.id], { status: "closed", resultsPublic: true, closedMs: Date.now() }); emit(); },
     async deleteElection(eid) { delete st.elections[eid]; emit(); },
     async addMembers(list) { list.forEach((m) => { if (!st.members.some((x) => x.email === m.email)) st.members.push(m); }); emit(); },
     async removeMember(email) { st.members = st.members.filter((m) => m.email !== email); emit(); },
@@ -369,7 +371,7 @@ function renderHome() {
 // member: undefined = যাচাই চলছে, true = অনুমোদিত, false = না
 // request: undefined = যাচাই চলছে, null = আবেদন নেই, {status} = আবেদন আছে
 let linkHandled = false;  // লিংকের নির্বাচন একবারই নিজে থেকে খোলা হবে
-const V = { settings: undefined, member: undefined, request: undefined, requested: false, open: undefined, linked: undefined, voted: {}, inBallot: null, selected: null, query: "", confirming: false, submitting: false, justVoted: null, popup: null, tally: null, err: "" };
+const V = { closed: [], tallies: {}, tallySubs: {}, settings: undefined, member: undefined, request: undefined, requested: false, open: undefined, linked: undefined, voted: {}, inBallot: null, selected: null, query: "", confirming: false, submitting: false, justVoted: null, popup: null, tally: null, err: "" };
 let voterSubs = [];
 const clearVoterSubs = () => { voterSubs.forEach((u) => { try { u(); } catch {} }); voterSubs = []; };
 
@@ -383,9 +385,6 @@ function startVoter() {
   unsubs.push(() => tallyUnsub?.());
   if (CODE) unsubs.push(api.watchElection(CODE, (e) => {
     V.linked = e;
-    const wantTally = e && e.status === "closed" && e.resultsPublic;
-    if (wantTally && !tallyUnsub) tallyUnsub = api.watchTally(CODE, (t) => { V.tally = t; renderVoter(); }, () => {});
-    if (!wantTally && tallyUnsub) { tallyUnsub(); tallyUnsub = null; V.tally = null; }
     afterElections(); renderVoter();
   }, () => { V.linked = null; renderVoter(); }));
 }
@@ -393,7 +392,7 @@ function startVoter() {
 // লগইনের পর: অনুমোদন আছে কিনা দেখা, না থাকলে আবেদন জমা
 function startVoterSession() {
   clearVoterSubs();
-  Object.assign(V, { member: undefined, request: undefined, requested: false, open: undefined, voted: {}, inBallot: null, popup: null, err: "" });
+  Object.assign(V, { member: undefined, request: undefined, requested: false, open: undefined, closed: [], tallies: {}, tallySubs: {}, voted: {}, inBallot: null, popup: null, err: "" });
   if (!user) return;
   voterSubs.push(api.watchMember(user.email, (m, data) => {
     const ph = okPhoto(user.photo);
@@ -402,6 +401,17 @@ function startVoterSession() {
     V.member = m;
     if (m && was !== true) {
       voterSubs.push(api.watchOpenElections((list) => { V.open = list; afterElections(); renderVoter(); }, (e) => { V.open = []; V.err = errText(e); renderVoter(); }));
+      voterSubs.push(api.watchClosedElections((list) => {
+        V.closed = list.sort((a, b) => (b.closedMs || 0) - (a.closedMs || 0)).slice(0, 6);
+        V.closed.forEach((e) => {
+          if (V.tallySubs[e.id]) return;
+          V.tallySubs[e.id] = true;
+          let tries = 0;
+          const go = () => voterSubs.push(api.watchTally(e.id, (t) => { V.tallies[e.id] = t; renderVoter(); }, () => { if (++tries <= 5) setTimeout(go, 1500 * tries); }));
+          go();
+        });
+        renderVoter();
+      }, () => { V.closed = []; }));
     }
     maybeRequest(); renderVoter();
   }, () => { V.member = false; renderVoter(); }));
@@ -484,11 +494,11 @@ function voterBody() {
   const list = votableList();
   const linkedNote = V.linked && V.linked.status !== "open"
     ? (V.linked.status === "closed"
-        ? `<div class="card" style="margin-bottom:14px"><div class="section-title"><h3>${esc(V.linked.title)}</h3>${statusPill("closed")}</div>${V.linked.resultsPublic && V.tally ? resultsList(V.linked, V.tally) : `<p>ভোটগ্রহণ শেষ হয়েছে। ফলাফল শীঘ্রই প্রকাশ করা হবে।</p>`}</div>`
+        ? `<div class="note" style="margin-bottom:14px">${ICON.info}<div>“${esc(V.linked.title)}”-এর ভোটগ্রহণ শেষ হয়েছে। ফলাফল নিচে দেখুন।</div></div>`
         : `<div class="note" style="margin-bottom:14px">${ICON.info}<div>“${esc(V.linked.title)}”-এর ভোটগ্রহণ এখনও শুরু হয়নি।</div></div>`)
     : (CODE && !V.linked ? `<div class="note warn" style="margin-bottom:14px">${ICON.info}<div>এই লিংকের নির্বাচনটি পাওয়া যায়নি। নিচে চলমান নির্বাচনগুলো দেখুন।</div></div>` : "");
 
-  if (!list.length) return noElection("চলমান নির্বাচন", "এই মুহূর্তে কোনো নির্বাচনে ভোটগ্রহণ চলছে না।").replace("</section>", "</section>" + linkedNote);
+  if (!list.length) return noElection("চলমান নির্বাচন", "এই মুহূর্তে কোনো নির্বাচনে ভোটগ্রহণ চলছে না।").replace("</section>", "</section>" + linkedNote) + resultsSection();
 
   const cards = list.map((e) => {
     const v = V.voted[e.id];
@@ -500,7 +510,27 @@ function voterBody() {
   const left = list.filter((e) => V.voted[e.id] === false).length;
   return `<section class="head"><span class="status">ভোটার</span><h1>চলমান নির্বাচন</h1><p class="lede">${left ? `${bn(left)}টি নির্বাচনে আপনার ভোট দেওয়া বাকি। নির্বাচনে চাপ দিয়ে ব্যালট খুলুন।` : "সব চলমান নির্বাচনে আপনার ভোট দেওয়া হয়ে গেছে।"}</p></section>
     ${V.err ? `<div class="note err" style="margin-bottom:12px">${ICON.info}<div>${esc(V.err)}</div></div>` : ""}
-    ${linkedNote}<div class="elist-v">${cards}</div>`;
+    ${linkedNote}<div class="elist-v">${cards}</div>${resultsSection()}`;
+}
+
+function winnerLine(e, t) {
+  const total = sumTally(t);
+  if (!total) return `<p class="win none">কেউ ভোট দেননি</p>`;
+  const top = Math.max(...e.candidates.map((c) => t[c.id] || 0));
+  const w = e.candidates.filter((c) => (t[c.id] || 0) === top);
+  return w.length > 1
+    ? `<p class="win tie">সমান ভোট: ${w.map((c) => esc(c.name)).join(", ")} (${bn(top)} ভোট করে)</p>`
+    : `<p class="win"><span class="chip">বিজয়ী</span> <b>${esc(w[0].name)}</b> · ${bn(top)} ভোট</p>`;
+}
+function resultsSection() {
+  const list = V.closed || [];
+  if (!list.length) return "";
+  return `<section class="res-sec"><div class="section-title"><h3>ফলাফল</h3><span>শেষ হওয়া নির্বাচন</span></div>
+    <div class="stack">${list.map((e) => {
+      const t = V.tallies[e.id];
+      return `<div class="card"><div class="section-title"><h3>${esc(e.title)}</h3>${statusPill("closed")}</div>
+        ${t ? winnerLine(e, t) + resultsList(e, t) + `<p class="hint" style="margin:10px 0 0">মোট ${bn(sumTally(t))} ভোট</p>` : `<div class="spin" style="margin:20px auto"></div>`}</div>`;
+    }).join("")}</div></section>`;
 }
 
 function ballotView(e) {
@@ -627,7 +657,15 @@ function bindSelected(force) {
   boundKey = key; clearSel(); A.voters = []; A.tally = null;
   if (!e || e.status === "draft") return;
   selUnsubs.push(api.watchVoters(e.id, (v) => { A.voters = v; renderAdmin(); }, () => {}));
-  if (canTally) selUnsubs.push(api.watchTally(e.id, (t) => { A.tally = t; renderAdmin(); }, () => { A.tally = null; }));
+  if (canTally) {
+    let tries = 0;
+    const sub = () => selUnsubs.push(api.watchTally(e.id, (t) => { A.tally = t; renderAdmin(); }, () => {
+      // ভোট শেষ করার ঠিক পরে সার্ভারে অবস্থা পৌঁছাতে এক মুহূর্ত লাগে; একটু পরে আবার চেষ্টা
+      A.tally = null;
+      if (++tries <= 6 && boundKey === key) setTimeout(() => { if (boundKey === key) sub(); }, 1500 * tries);
+    }));
+    sub();
+  }
 }
 const selected = () => A.elections?.find((e) => e.id === A.sel) || null;
 const sumTally = (t) => Object.values(t || {}).reduce((a, b) => a + b, 0);
@@ -702,8 +740,8 @@ function editorPanel() {
 function electionPanel(e) {
   const voted = A.voters.length;
   const pool = A.members.length;
-  const steps = [["draft", "খসড়া", ICON.stepDraft], ["open", "ভোটগ্রহণ", ICON.stepOpen], ["closed", "ভোট শেষ", ICON.stepClosed], ["public", "ফল প্রকাশ", ICON.stepResult]];
-  const at = e.status === "draft" ? 0 : e.status === "open" ? 1 : e.resultsPublic ? 3 : 2;
+  const steps = [["draft", "খসড়া", ICON.stepDraft], ["open", "ভোটগ্রহণ", ICON.stepOpen], ["closed", "ফলাফল প্রকাশ", ICON.stepResult]];
+  const at = e.status === "draft" ? 0 : e.status === "open" ? 1 : 3;
   const stepper = `<ol class="stepper">${steps.map(([k, l, ic], i) => `<li class="${i < at ? "done" : i === at ? "now" : ""}"><span class="dot">${i < at ? ICON.checkSm : ic}</span><span class="lb">${l}</span></li>`).join("")}</ol>`;
   const head = `<div class="card hero"><div class="panel-head"><div>${statusPill(e.status)}<h2>${esc(e.title)}</h2></div>
     <div class="row-gap">${actionsFor(e)}</div></div>${stepper}`;
@@ -726,8 +764,10 @@ function electionPanel(e) {
 
   let results;
   if (A.tally) {
-    results = `<div class="card"><div class="section-title"><h3>ফলাফল</h3><span>মোট ${bn(sumTally(A.tally))} ভোট</span></div>${resultsList(e, A.tally)}
-      ${e.status === "closed" ? `<div class="toggle" style="border-top:1px solid var(--line-2);margin-top:8px"><div class="t"><b>ফলাফল ভোটারদের দেখান</b><span>চালু করলে ভোটারদের লিংকে ফলাফল দেখা যাবে।</span></div><label class="switch"><input type="checkbox" id="sw-public" data-act="sw-public" ${e.resultsPublic ? "checked" : ""} aria-label="ফলাফল প্রকাশ"><i></i></label></div>` : ""}</div>`;
+    results = `<div class="card"><div class="section-title"><h3>ফলাফল</h3><span>মোট ${bn(sumTally(A.tally))} ভোট</span></div>${winnerLine(e, A.tally)}${resultsList(e, A.tally)}
+      <div class="note" style="margin-top:10px">${ICON.info}<div>ফলাফল সব অনুমোদিত ভোটারের জন্য প্রকাশিত। তাঁরা নিজেদের নির্বাচন পাতায় ফলাফল দেখতে পাচ্ছেন।</div></div></div>`;
+  } else if (e.status === "closed") {
+    results = `<div class="card"><div class="section-title"><h3>ফলাফল</h3></div><div class="spin" style="margin:24px auto" aria-label="ফলাফল আসছে"></div></div>`;
   } else {
     results = `<div class="locked"><div>${ICON.lockBig}<b>ভোটগ্রহণ শেষ হলে ফলাফল নিজে থেকেই দেখা যাবে</b>গোপনীয়তা রক্ষায় ভোট চলাকালীন কেউ, অ্যাডমিনও, ফলাফল দেখতে পারবেন না।</div></div>`;
   }
@@ -891,7 +931,7 @@ root.addEventListener("click", async (ev) => {
     }
     case "ask-open": { const e = selected(); A.confirm = { title: "ভোটগ্রহণ শুরু করবেন?", body: `“${esc(e.title)}”-এ ${bn(e.candidates.length)} জন প্রার্থী। শুরু করার পর প্রার্থী তালিকা আর বদলানো যাবে না, আর ভোটাররা লিংকে এই নির্বাচনটি দেখবেন।`, ok: "শুরু করুন", run: () => api.openElection(e), msg: "ভোটগ্রহণ শুরু হয়েছে" }; renderAdmin(); break; }
     case "ask-reopen": { const e = selected(); A.confirm = { title: "আবার ভোটগ্রহণ চালু করবেন?", body: "যাঁরা আগে ভোট দিয়েছেন তাঁরা আবার দিতে পারবেন না। আগের সব ভোট যেমন ছিল তেমনই থাকবে।", ok: "চালু করুন", run: () => api.openElection(e), msg: "আবার চালু হয়েছে" }; renderAdmin(); break; }
-    case "ask-close": { const e = selected(); A.confirm = { title: "ভোটগ্রহণ শেষ করবেন?", body: `এখন পর্যন্ত ${bn(A.voters.length)} জন ভোট দিয়েছেন। শেষ করার পর আর কেউ ভোট দিতে পারবেন না এবং ফলাফল খুলে যাবে।`, ok: "শেষ করুন", run: () => api.closeElection(e), msg: "ভোটগ্রহণ শেষ হয়েছে" }; renderAdmin(); break; }
+    case "ask-close": { const e = selected(); A.confirm = { title: "ভোটগ্রহণ শেষ করবেন?", body: `এখন পর্যন্ত ${bn(A.voters.length)} জন ভোট দিয়েছেন। শেষ করার পর আর কেউ ভোট দিতে পারবেন না, আর ফলাফল সঙ্গে সঙ্গে সব ভোটারের জন্য প্রকাশ হয়ে যাবে।`, ok: "শেষ করুন", run: () => api.closeElection(e), msg: "ভোটগ্রহণ শেষ, ফলাফল প্রকাশিত হয়েছে" }; renderAdmin(); break; }
     case "ask-delete": { const e = selected(); A.confirm = { title: "নির্বাচনটি মুছবেন?", body: `“${esc(e.title)}” তালিকা থেকে মুছে যাবে। এটি ফেরানো যাবে না।`, ok: "মুছে ফেলুন", danger: true, run: async () => { await api.deleteElection(e.id); A.sel = null; }, msg: "মুছে ফেলা হয়েছে" }; renderAdmin(); break; }
     case "aconf-ok": { const c = A.confirm; await adminRun(c.run, c.msg); break; }
     case "aconf-no": case "aconf-bg": if (!A.busy) { A.confirm = null; renderAdmin(); } break;
