@@ -69,6 +69,7 @@ async function firebaseBackend() {
   ]);
   const app = initializeApp(FB);
   const auth = A.getAuth(app);
+  try { await A.setPersistence(auth, A.browserLocalPersistence); } catch {}
   const db = F.getFirestore(app);
   const provider = new A.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
@@ -263,8 +264,12 @@ if (DEMO && !CODE) CODE = "e1";
 function routeFromUrl() {
   if (/\/admin\/?$/.test(location.pathname) || location.hash === "#admin") return "admin";
   if (location.hash === "#voter") return "vote";
+  if (CODE) return "vote";           // নির্বাচনের লিংক: সরাসরি ভোটের পাতায়
   return "home";
 }
+// আগে কোন ভূমিকায় ঢুকেছিলেন তা এই ডিভাইসে মনে রাখা
+const lastRole = { get() { try { return localStorage.getItem("bhf-role"); } catch { return null; } }, set(r) { try { localStorage.setItem("bhf-role", r); } catch {} } };
+let manualHome = false;  // ব্যবহারকারী নিজে "শুরুতে ফিরুন" চাপলে আর স্বয়ংক্রিয়ভাবে সরানো হবে না
 let route = routeFromUrl();
 let user;            // undefined = still checking, null = signed out
 let unsubs = [];
@@ -275,10 +280,11 @@ function baseLink() {
   return location.origin + location.pathname.replace(/admin\/?$/, "").replace(/index\.html$/, "");
 }
 const electionLink = (id) => baseLink() + "?e=" + id;
-function setRoute(r) {
+function setRoute(r, replace) {
   route = r;
+  if (r === "admin" || r === "vote") lastRole.set(r);
   const hash = r === "admin" ? "#admin" : r === "vote" ? "#voter" : "";
-  try { history.pushState(null, "", location.pathname.replace(/admin\/?$/, "") + location.search + hash); } catch {}
+  try { history[replace ? "replaceState" : "pushState"](null, "", location.pathname.replace(/admin\/?$/, "") + location.search + hash); } catch {}
   boot();
 }
 
@@ -318,6 +324,7 @@ const rerender = () => (route === "home" ? renderHome() : route === "admin" ? re
 /* ═══════════════════ HOME (ভূমিকা বাছাই) ═══════════════════ */
 function renderHome() {
   if (route !== "home") return;
+  if (user === undefined && !manualHome) { root.innerHTML = demoBar() + `<main class="shell">${mast()}<div class="spin" aria-label="লোড হচ্ছে"></div></main>`; return; }
   root.innerHTML = demoBar() + `<main class="shell">${mast()}
     <section class="head"><span class="status">${CODE ? "নির্বাচনের লিংক" : "স্বাগতম"}</span><h1>কীভাবে প্রবেশ করবেন?</h1>
     <p class="lede">ভোট দিতে <b>ভোটার</b> বেছে নিন। নির্বাচন পরিচালনার জন্য <b>অ্যাডমিন</b>।</p></section>
@@ -331,6 +338,7 @@ function renderHome() {
 /* ═══════════════════ VOTER ═══════════════════ */
 // member: undefined = যাচাই চলছে, true = অনুমোদিত, false = না
 // request: undefined = যাচাই চলছে, null = আবেদন নেই, {status} = আবেদন আছে
+let linkHandled = false;  // লিংকের নির্বাচন একবারই নিজে থেকে খোলা হবে
 const V = { settings: undefined, member: undefined, request: undefined, requested: false, open: undefined, linked: undefined, voted: {}, inBallot: null, selected: null, query: "", confirming: false, submitting: false, justVoted: null, popup: null, tally: null, err: "" };
 let voterSubs = [];
 const clearVoterSubs = () => { voterSubs.forEach((u) => { try { u(); } catch {} }); voterSubs = []; };
@@ -385,14 +393,24 @@ const ballotElection = () => votableList().find((e) => e.id === V.inBallot) || n
 async function afterElections() {
   if (!user || !V.member) return;
   const todo = votableList().filter((e) => V.voted[e.id] === undefined);
-  if (!todo.length) return;
+  if (!todo.length) { autoOpenLinked(); return; }
   todo.forEach((e) => (V.voted[e.id] = null));
   await Promise.all(todo.map(async (e) => {
     try { V.voted[e.id] = await api.hasVoted(e.id, user.uid); } catch { V.voted[e.id] = false; }
   }));
   // ব্যালট খোলা অবস্থায় নির্বাচন বন্ধ হয়ে গেলে
   if (V.inBallot && !ballotElection()) { V.inBallot = null; V.confirming = false; }
+  autoOpenLinked();
   renderVoter();
+}
+
+function autoOpenLinked() {
+  if (linkHandled || !CODE || !V.member || !V.linked || V.linked.status !== "open") return;
+  const v = V.voted[CODE];
+  if (v === undefined || v === null) return;
+  linkHandled = true;
+  if (v) V.popup = { eid: CODE };
+  else if (!V.inBallot && !V.justVoted) { V.inBallot = CODE; V.selected = null; V.query = ""; }
 }
 
 function noElection(title, body) {
@@ -769,7 +787,7 @@ root.addEventListener("click", async (ev) => {
     case "signout-ok": askSignout = false; V.justVoted = null; V.popup = null; V.inBallot = null; V.confirming = false; await api.signOut(); break;
     case "copy-here": copyText(location.href); break;
     case "role": setRoute(v); break;
-    case "home": setRoute("home"); break;
+    case "home": manualHome = true; setRoute("home"); break;
     case "open-ballot":
       if (V.voted[v]) { V.popup = { eid: v }; renderVoter(); break; }
       if (V.voted[v] !== false) break;
@@ -869,7 +887,10 @@ function boot() {
   else { startVoter(); renderVoter(); }
   authUnsub = api.onAuth((u) => {
     user = u || null;
-    if (route === "home") renderHome();
+    if (route === "home") {
+      if (user && !manualHome) return setRoute(lastRole.get() === "admin" ? "admin" : "vote", true);
+      renderHome();
+    }
     else if (route === "admin") startAdmin();
     else { startVoterSession(); renderVoter(); }
   });
