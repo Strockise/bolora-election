@@ -4,16 +4,28 @@
   },
   "hosting": {
     "public": "public",
-    "ignore": ["firebase.json", "**/.*"],
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
     "cleanUrls": true,
     "rewrites": [
-      { "source": "/admin", "destination": "/index.html" }
+      {
+        "source": "/admin",
+        "destination": "/index.html"
+      }
     ],
     "headers": [
       {
-        "source": "**/*.@(html|js|css)",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        "source": "**/*.@(html|js|css|txt)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
-    ]
+    ],
+    "site": "bolora-hilf-al-fudul"
   }
 }

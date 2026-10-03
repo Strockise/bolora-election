@@ -295,7 +295,8 @@ let unsubs = [];
 const clearSubs = () => { unsubs.forEach((u) => { try { u(); } catch {} }); unsubs = []; };
 
 function baseLink() {
-  if (DEMO) return "https://strockise.github.io/bolora-election/";
+  if (C.siteUrl) return C.siteUrl.replace(/\/?$/, "/");
+  if (DEMO) return "https://bolora-hilf-al-fudul.web.app/";
   return location.origin + location.pathname.replace(/admin\/?$/, "").replace(/index\.html$/, "");
 }
 const electionLink = (id) => baseLink() + "?e=" + id;

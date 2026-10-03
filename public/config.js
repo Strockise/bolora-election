@@ -12,6 +12,9 @@ window.APP_CONFIG = {
   // মূল অ্যাডমিন। firestore.rules ফাইলের OWNER_EMAIL-এর সাথে হুবহু মিল থাকতে হবে।
   ownerEmail: "strockise.official@gmail.com",
 
+  // সবাইকে যে ঠিকানা দেওয়া হবে (নির্বাচনের লিংকও এই ঠিকানায় তৈরি হয়)
+  siteUrl: "https://bolora-hilf-al-fudul.web.app/",
+
   firebase: {
     apiKey: "AIzaSyCjyQ_Xr-fkfWvcZVBJNFn2A7gqzcqpKtY",
     authDomain: "bolora-election.firebaseapp.com",
