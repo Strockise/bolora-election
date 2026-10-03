@@ -20,6 +20,9 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const collator = new Intl.Collator("bn");
 
 const ICON = {
+  ballot: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11h16v9H4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 11V4.5h8V11" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m9.8 7.6 1.6 1.6 3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 15h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  ballotBig: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11h16v9H4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 11V4.5h8V11" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 15h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  key: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="12" r="3.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.6 12H21m-3 0v3m-3-3v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   info: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M8 7v4.2M8 4.6v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   lock: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 7V5.2a2.7 2.7 0 0 1 5.4 0V7" stroke="currentColor" stroke-width="1.4"/></svg>',
   lockBig: '<svg width="28" height="28" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="M5.3 7V5.2a2.7 2.7 0 0 1 5.4 0V7" stroke="currentColor" stroke-width="1.1"/></svg>',
@@ -55,10 +58,6 @@ function errText(e) {
 }
 const inAppBrowser = () => /FBAN|FBAV|FB_IAB|FBIOS|Instagram|Messenger|Line\/|MicroMessenger|imo|; wv\)/i.test(navigator.userAgent);
 const isAndroid = () => /Android/i.test(navigator.userAgent);
-function voterLink() {
-  if (DEMO) return "https://আপনার-প্রজেক্ট.web.app";
-  return location.origin + location.pathname.replace(/\/admin\/?$/, "/").replace(/index\.html$/, "");
-}
 
 /* ── Firebase backend ────────────────────────────── */
 async function firebaseBackend() {
@@ -115,7 +114,7 @@ async function firebaseBackend() {
     async ensureSettings() {
       const r = d("settings", "app");
       const s = await F.getDoc(r);
-      if (!s.exists()) await F.setDoc(r, { activeElection: null, restrict: false, liveResults: false });
+      if (!s.exists()) await F.setDoc(r, { restrict: false, liveResults: false });
     },
     updateSettings: (p) => F.setDoc(d("settings", "app"), p, { merge: true }),
     async createElection(title, candidates) {
@@ -131,7 +130,6 @@ async function firebaseBackend() {
         b.set(d("elections", e.id, "meta", "box"), { pick: "", n: rid(20) });
       }
       b.update(d("elections", e.id), { status: "open", openedAt: F.serverTimestamp() });
-      b.set(d("settings", "app"), { activeElection: e.id }, { merge: true });
       await b.commit();
     },
     async closeElection(e) {
@@ -161,7 +159,7 @@ function demoBackend() {
   const seedVoters = ["আলমগীর হোসেন", "রুবিনা ইয়াসমিন", "মোঃ ইউনুস", "সেলিনা বেগম", "জসিম উদ্দিন", "মাসুদ রানা", "শফিকুল ইসলাম", "পারভেজ মোশাররফ", "আয়েশা সিদ্দিকা", "নুরুল আমিন", "ইমরান হোসেন", "সাবিনা ইয়াসমিন", "হাসান মাহমুদ", "রাশেদুল করিম", "ফাতেমা তুজ জোহরা", "আরিফুল হক", "মোস্তফা কামাল", "শামীম আহমেদ", "লিপি আক্তার", "জাকির হোসেন", "রবিউল ইসলাম", "তাসলিমা নাসরিন", "মাহফুজুর রহমান"];
   const st = {
     user: null,
-    settings: { activeElection: "e1", restrict: false, liveResults: false },
+    settings: { restrict: false, liveResults: false },
     elections: {
       e1: { id: "e1", title: "সভাপতি নির্বাচন", status: "open", candidates: cands, candidateIds: cands.map((c) => c.id), resultsPublic: false, createdAt: 2 },
       e0: { id: "e0", title: "সাধারণ সম্পাদক নির্বাচন", status: "draft", candidates: cands.slice(0, 6), candidateIds: cands.slice(0, 6).map((c) => c.id), resultsPublic: false, createdAt: 1 },
@@ -219,10 +217,10 @@ function demoBackend() {
     async openElection(e) {
       await wait();
       if (e.status === "draft") { st.tally[e.id] = {}; e.candidates.forEach((c) => (st.tally[e.id][c.id] = 0)); }
-      st.elections[e.id].status = "open"; st.settings.activeElection = e.id; emit();
+      st.elections[e.id].status = "open"; emit();
     },
     async closeElection(e) { await wait(); st.elections[e.id].status = "closed"; emit(); },
-    async deleteElection(eid) { delete st.elections[eid]; if (st.settings.activeElection === eid) st.settings.activeElection = null; emit(); },
+    async deleteElection(eid) { delete st.elections[eid]; emit(); },
     async addMembers(list) { list.forEach((m) => { if (!st.members.some((x) => x.email === m.email)) st.members.push(m); }); emit(); },
     async removeMember(email) { st.members = st.members.filter((m) => m.email !== email); emit(); },
     async addAdmin(email) { if (!st.admins.some((a) => a.email === email)) st.admins.push({ email }); emit(); },
@@ -233,10 +231,31 @@ function demoBackend() {
 /* ── App shell ───────────────────────────────────── */
 const root = document.getElementById("app");
 let api = null;
-let route = (/\/admin\/?$/.test(location.pathname) || location.hash === "#admin") ? "admin" : "vote";
+const params = new URLSearchParams(location.search);
+// নির্বাচনের লিংকে ?e=<গোপন কোড> থাকে। কোড ছাড়া কেউ কোনো নির্বাচন খুঁজে পায় না।
+let CODE = (params.get("e") || "").trim().replace(/[^A-Za-z0-9_-]/g, "") || null;
+if (DEMO && !CODE) CODE = "e1";
+function routeFromUrl() {
+  if (/\/admin\/?$/.test(location.pathname) || location.hash === "#admin") return "admin";
+  if (location.hash === "#voter") return "vote";
+  return "home";
+}
+let route = routeFromUrl();
 let user;            // undefined = still checking, null = signed out
 let unsubs = [];
 const clearSubs = () => { unsubs.forEach((u) => { try { u(); } catch {} }); unsubs = []; };
+
+function baseLink() {
+  if (DEMO) return "https://strockise.github.io/bolora-election/";
+  return location.origin + location.pathname.replace(/admin\/?$/, "").replace(/index\.html$/, "");
+}
+const electionLink = (id) => baseLink() + "?e=" + id;
+function setRoute(r) {
+  route = r;
+  const hash = r === "admin" ? "#admin" : r === "vote" ? "#voter" : "";
+  try { history.pushState(null, "", location.pathname.replace(/admin\/?$/, "") + location.search + hash); } catch {}
+  boot();
+}
 
 function mast() {
   const who = user
@@ -244,10 +263,12 @@ function mast() {
     : "";
   return `<header class="mast"><img src="${LOGO}" alt="${esc(ORG)} লোগো" width="44" height="44"><div class="org"><b>${esc(ORG)}</b><span>${esc(ORG_EN)}</span></div>${who}</header>`;
 }
+function crumb(label) {
+  return `<button class="crumb" data-act="home">← ${label || "শুরুতে ফিরুন"}</button>`;
+}
 function demoBar() {
   if (!api?.demo) return "";
-  return `<div class="demo-bar"><span><b>ডেমো মোড</b> — নমুনা নাম ও সংখ্যা, কিছুই সংরক্ষিত হয় না।</span>
-    <span class="seg" role="group" aria-label="ভিউ বদলান"><button data-act="demo-view" data-v="vote" aria-pressed="${route === "vote"}">ভোটার</button><button data-act="demo-view" data-v="admin" aria-pressed="${route === "admin"}">অ্যাডমিন</button></span></div>`;
+  return `<div class="demo-bar"><span><b>ডেমো মোড</b> — নমুনা নাম ও সংখ্যা, কিছুই সংরক্ষিত হয় না।</span></div>`;
 }
 function signInButton(label = "Google দিয়ে প্রবেশ করুন") {
   return `<button class="btn primary block" data-act="signin" id="signin-btn">${ICON.google}<span>${label}</span></button>`;
@@ -259,34 +280,40 @@ function inAppNote() {
   return `<div class="note warn">${ICON.info}<div>আপনি Facebook/Messenger-এর ভেতরের ব্রাউজারে আছেন। এখানে Google লগইন কাজ নাও করতে পারে। উপরের <b>⋮</b> মেনু থেকে <b>“Open in browser”</b> বেছে নিন।<div class="row-gap" style="margin-top:8px">${chrome}<button class="btn sm" data-act="copy-here">লিংক কপি করুন</button></div></div></div>`;
 }
 
+/* ═══════════════════ HOME (ভূমিকা বাছাই) ═══════════════════ */
+function renderHome() {
+  if (route !== "home") return;
+  root.innerHTML = demoBar() + `<main class="shell">${mast()}
+    <section class="head"><span class="status">${CODE ? "নির্বাচনের লিংক" : "স্বাগতম"}</span><h1>কীভাবে প্রবেশ করবেন?</h1>
+    <p class="lede">ভোট দিতে <b>ভোটার</b> বেছে নিন। নির্বাচন পরিচালনার জন্য <b>অ্যাডমিন</b>।</p></section>
+    <div class="roles">
+      <button class="role" data-act="role" data-v="vote" id="role-vote"><span class="ic">${ICON.ballot}</span><span class="tx"><b>ভোটার</b><span>পছন্দের প্রার্থীকে ভোট দিন</span></span><span class="ar" aria-hidden="true">→</span></button>
+      <button class="role" data-act="role" data-v="admin" id="role-admin"><span class="ic">${ICON.key}</span><span class="tx"><b>অ্যাডমিন</b><span>শুধু নির্বাচন পরিচালকদের জন্য</span></span><span class="ar" aria-hidden="true">→</span></button>
+    </div>
+    <p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>`;
+}
+
 /* ═══════════════════ VOTER ═══════════════════ */
-const V = { settings: undefined, election: undefined, eid: null, voted: null, member: null, checkedFor: "", selected: null, query: "", confirming: false, submitting: false, justVoted: false, tally: null, err: "" };
+const V = { settings: undefined, election: undefined, voted: null, member: null, checkedFor: "", inBallot: false, selected: null, query: "", confirming: false, submitting: false, justVoted: false, popup: null, tally: null, err: "" };
 
 function startVoter() {
   clearSubs();
-  Object.assign(V, { settings: undefined, election: undefined, eid: undefined, voted: null, member: null, checkedFor: "", selected: null, query: "", confirming: false, submitting: false, tally: null, err: "" });
-  let electionUnsub = null, tallyUnsub = null;
-  unsubs.push(() => { electionUnsub?.(); tallyUnsub?.(); });
-  unsubs.push(api.watchSettings((s) => {
-    V.settings = s || {};
-    const eid = V.settings.activeElection || null;
-    if (eid !== V.eid) {
-      V.eid = eid; V.election = eid ? undefined : null; V.checkedFor = "";
-      electionUnsub?.(); tallyUnsub?.(); tallyUnsub = null;
-      if (eid) electionUnsub = api.watchElection(eid, (e) => {
-        V.election = e;
-        const wantTally = e && e.status === "closed" && e.resultsPublic;
-        if (wantTally && !tallyUnsub) tallyUnsub = api.watchTally(eid, (t) => { V.tally = t; renderVoter(); }, () => {});
-        if (!wantTally && tallyUnsub) { tallyUnsub(); tallyUnsub = null; V.tally = null; }
-        checkVoter(); renderVoter();
-      }, () => { V.election = null; renderVoter(); });
-    }
+  Object.assign(V, { settings: undefined, election: CODE ? undefined : null, justVoted: false, voted: null, member: null, checkedFor: "", inBallot: false, selected: null, query: "", confirming: false, submitting: false, popup: null, tally: null, err: "" });
+  let tallyUnsub = null;
+  unsubs.push(() => tallyUnsub?.());
+  unsubs.push(api.watchSettings((s) => { V.settings = s || {}; checkVoter(); renderVoter(); }, () => { V.settings = {}; renderVoter(); }));
+  if (CODE) unsubs.push(api.watchElection(CODE, (e) => {
+    V.election = e;
+    if (!e || e.status !== "open") { V.inBallot = false; V.confirming = false; }
+    const wantTally = e && e.status === "closed" && e.resultsPublic;
+    if (wantTally && !tallyUnsub) tallyUnsub = api.watchTally(CODE, (t) => { V.tally = t; renderVoter(); }, () => {});
+    if (!wantTally && tallyUnsub) { tallyUnsub(); tallyUnsub = null; V.tally = null; }
     checkVoter(); renderVoter();
-  }, () => { V.settings = {}; renderVoter(); }));
+  }, () => { V.election = null; renderVoter(); }));
 }
 
 async function checkVoter() {
-  if (!user || !V.election || V.election.status !== "open") return;
+  if (!user || !V.election || V.election.status !== "open" || V.settings === undefined) return;
   const key = user.uid + "|" + V.election.id + "|" + !!V.settings?.restrict;
   if (V.checkedFor === key) return;
   V.checkedFor = key; V.voted = null; V.member = null;
@@ -301,32 +328,47 @@ async function checkVoter() {
   renderVoter();
 }
 
+function emptyState(title, body) {
+  return `<section class="head"><h1>${title}</h1><p class="lede">${body}</p></section>
+    <div class="locked"><div>${ICON.ballotBig}<b>কোনো চলমান নির্বাচন দেখানোর নেই</b>নির্বাচন শুরু হলে পরিচালক আপনাকে লিংক পাঠাবেন। সেই লিংকে ক্লিক করে আবার আসুন।</div></div>`;
+}
+
 function voterBody() {
   const e = V.election;
-  if (V.settings === undefined || e === undefined || user === undefined) return `<div class="spin" aria-label="লোড হচ্ছে"></div>`;
-  if (!e) return `<section class="head"><h1>এই মুহূর্তে কোনো নির্বাচন চলছে না</h1><p class="lede">নির্বাচন শুরু হলে এই একই লিংকে ভোট দিতে পারবেন।</p></section>`;
+  if (user === undefined || V.settings === undefined || e === undefined) return `<div class="spin" aria-label="লোড হচ্ছে"></div>`;
 
-  const head = `<section class="head">${statusPill(e.status)}<h1>${esc(e.title)}</h1>`;
-  if (e.status === "draft") return `${head}<p class="lede">ভোটগ্রহণ এখনও শুরু হয়নি। শুরু হলে এই লিংকেই ভোট দিতে পারবেন।</p></section>`;
-  if (e.status === "closed") {
-    if (V.justVoted) return head + "</section>" + receipt();
-    const res = e.resultsPublic && V.tally ? `<div class="card"><div class="section-title"><h3>ফলাফল</h3><span>মোট ${bn(sumTally(V.tally))} ভোট</span></div>${resultsList(e, V.tally)}</div>` : "";
-    return `${head}<p class="lede">ভোটগ্রহণ শেষ হয়েছে। ${e.resultsPublic ? "" : "ফলাফল শীঘ্রই প্রকাশ করা হবে।"}</p></section>${res}`;
-  }
-
-  // open
   if (!user) {
-    return `${head}<p class="lede">আপনার Google অ্যাকাউন্ট দিয়ে প্রবেশ করে পছন্দের প্রার্থীকে একবার ভোট দিন। কোনো রেজিস্ট্রেশন লাগবে না।</p></section>
+    return `<section class="head"><span class="status">ভোটার</span><h1>${e ? esc(e.title) : "ভোটার হিসেবে প্রবেশ"}</h1><p class="lede">আপনার Google অ্যাকাউন্ট দিয়ে প্রবেশ করুন। কোনো রেজিস্ট্রেশন লাগবে না।</p></section>
       <div class="stack">${inAppNote()}<div class="card stack">${signInButton()}
       <div class="note">${ICON.lock}<div>আপনি কাকে ভোট দিচ্ছেন তা কোথাও আপনার নামের সাথে সংরক্ষিত হয় না। অ্যাডমিনও তা দেখতে পারেন না।</div></div></div></div>`;
   }
-  if (V.justVoted) return head + "</section>" + receipt(true);
-  if (V.voted === null || V.member === null) return head + `</section><div class="spin" aria-label="যাচাই হচ্ছে"></div>`;
-  if (!V.member) return `${head}</section><div class="card stack"><h2>এই ইমেইলটি ভোটার তালিকায় নেই</h2><p><b>${esc(user.email)}</b> দিয়ে এই নির্বাচনে ভোট দেওয়া যাবে না। সংগঠনে যে ইমেইল দিয়েছেন সেটি দিয়ে প্রবেশ করুন, অথবা পরিচালকের সাথে যোগাযোগ করুন।</p><div><button class="btn" data-act="signout">অন্য অ্যাকাউন্ট দিয়ে প্রবেশ করুন</button></div></div>`;
-  if (V.voted) return head + "</section>" + receipt(false);
+
+  if (!CODE) return emptyState("এখন কোনো চলমান নির্বাচন নেই", "এই মুহূর্তে আপনার জন্য কোনো নির্বাচনে ভোটগ্রহণ চলছে না।");
+  if (!e) return emptyState("নির্বাচনটি পাওয়া যায়নি", "লিংকটি সঠিক নয়, অথবা নির্বাচনটি মুছে ফেলা হয়েছে। পরিচালকের কাছ থেকে সঠিক লিংকটি নিন।");
+  if (e.status === "draft") return emptyState("এখন কোনো চলমান নির্বাচন নেই", `“${esc(e.title)}”-এর ভোটগ্রহণ এখনও শুরু হয়নি। শুরু হলে এই একই লিংকে ভোট দিতে পারবেন।`);
+
+  if (e.status === "closed") {
+    if (V.justVoted) return `<section class="head">${statusPill("closed")}<h1>${esc(e.title)}</h1></section>` + receipt(true);
+    const res = e.resultsPublic && V.tally ? `<div class="card"><div class="section-title"><h3>ফলাফল</h3><span>মোট ${bn(sumTally(V.tally))} ভোট</span></div>${resultsList(e, V.tally)}</div>` : "";
+    return `<section class="head">${statusPill("closed")}<h1>${esc(e.title)}</h1><p class="lede">ভোটগ্রহণ শেষ হয়েছে। ${e.resultsPublic ? "" : "ফলাফল শীঘ্রই প্রকাশ করা হবে।"}</p></section>${res}`;
+  }
+
+  // ভোটগ্রহণ চলছে
+  if (V.justVoted) return `<section class="head">${statusPill("open")}<h1>${esc(e.title)}</h1></section>` + receipt(true);
+  if (V.voted === null || V.member === null) return `<div class="spin" aria-label="যাচাই হচ্ছে"></div>`;
+
+  if (!V.inBallot) {
+    const done = V.voted;
+    return `<section class="head"><span class="status">ভোটার</span><h1>চলমান নির্বাচন</h1><p class="lede">${done ? "এই নির্বাচনে আপনার ভোট দেওয়া হয়ে গেছে।" : "নির্বাচনটিতে চাপ দিয়ে ব্যালট খুলুন।"}</p></section>
+      ${V.err ? `<div class="note err" style="margin-bottom:12px">${ICON.info}<div>${esc(V.err)}</div></div>` : ""}
+      <button class="ecard ${done ? "done" : ""}" data-act="open-ballot" id="open-ballot">
+        <span class="tx">${statusPill("open")}<b>${esc(e.title)}</b><span>${bn(e.candidates.length)} জন প্রার্থী</span></span>
+        ${done ? `<span class="chip">ভোট দেওয়া হয়েছে</span>` : `<span class="go">ভোট দিন →</span>`}
+      </button>`;
+  }
 
   const n = e.candidates.length;
-  return `${head}<p class="lede">একজন প্রার্থী বেছে নিয়ে নিচের <b>ভোট দিন</b> বোতামে চাপুন। একবার ভোট দিলে আর বদলানো যাবে না।</p></section>
+  return `<section class="head">${statusPill(e.status)}<h1>${esc(e.title)}</h1><p class="lede">একজন প্রার্থী বেছে নিয়ে নিচের <b>ভোট দিন</b> বোতামে চাপুন। একবার ভোট দিলে আর বদলানো যাবে না।</p></section>
     ${V.err ? `<div class="note err" style="margin-bottom:12px">${ICON.info}<div>${esc(V.err)}</div></div>` : ""}
     <div class="ballot-tools">
       ${n > 8 ? `<label class="search">${ICON.search}<input id="q" type="search" placeholder="নাম দিয়ে খুঁজুন" value="${esc(V.query)}" autocomplete="off"></label>` : "<span></span>"}
@@ -344,14 +386,14 @@ function ballotRows() {
 
 function receipt(fresh) {
   return `<div class="card receipt ${fresh ? "fresh" : ""}"><div class="big-seal">ভোট</div>
-    <h2>${fresh ? "আপনার ভোট জমা হয়েছে" : "আপনি ইতিমধ্যে ভোট দিয়েছেন"}</h2>
-    <p>${fresh ? "ধন্যবাদ। আপনি কাকে ভোট দিয়েছেন তা কোথাও সংরক্ষিত হয়নি, শুধু প্রার্থীর মোট ভোট এক বেড়েছে।" : `<b>${esc(user?.email || "")}</b> দিয়ে এই নির্বাচনে একবার ভোট দেওয়া হয়ে গেছে। এক অ্যাকাউন্ট থেকে একটিই ভোট দেওয়া যায়।`}</p>
+    <h2>আপনার ভোট জমা হয়েছে</h2>
+    <p>ধন্যবাদ। আপনি কাকে ভোট দিয়েছেন তা কোথাও সংরক্ষিত হয়নি, শুধু প্রার্থীর মোট ভোট এক বেড়েছে।</p>
     <div style="margin-top:18px"><button class="btn sm" data-act="signout">বের হন</button></div></div>`;
 }
 
 function actionBar() {
   const e = V.election;
-  if (!e || e.status !== "open" || !user || V.voted !== false || !V.member || V.justVoted) return "";
+  if (!V.inBallot || !e || e.status !== "open" || !user || V.voted !== false || !V.member || V.justVoted) return "";
   const c = e.candidates.find((x) => x.id === V.selected);
   return `<div class="actionbar"><div class="inner"><div class="pick">${c ? `আপনার পছন্দ<b>${esc(c.name)}</b>` : "এখনও কাউকে বাছাই করা হয়নি"}</div>
     <button class="btn primary" data-act="review" ${c ? "" : "disabled"}>ভোট দিন</button></div></div>`;
@@ -368,11 +410,24 @@ function confirmSheet() {
     <button class="btn block" data-act="cancel" ${V.submitting ? "disabled" : ""}>ফিরে যান</button></div></div></div>`;
 }
 
+function voterPopup() {
+  const p = V.popup; if (!p) return "";
+  const msg = p === "voted"
+    ? { t: "আপনি ইতিমধ্যে ভোট দিয়েছেন", b: `<b>${esc(user?.email || "")}</b> দিয়ে “${esc(V.election?.title || "")}”-এ ভোট দেওয়া হয়ে গেছে। একজন ভোটার একটি নির্বাচনে একবারই ভোট দিতে পারেন।` }
+    : { t: "আপনি এই নির্বাচনে ভোট দিতে পারবেন না", b: `<b>${esc(user?.email || "")}</b> ইমেইলটি ভোটার তালিকায় নেই। সংগঠনে যে Gmail দিয়েছেন সেটি দিয়ে প্রবেশ করুন, অথবা পরিচালকের সাথে যোগাযোগ করুন।` };
+  return `<div class="scrim" data-act="popup-ok"><div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="pp-t">
+    <div class="big-seal sm ${p === "voted" ? "" : "warn"}" aria-hidden="true">${p === "voted" ? "ভোট" : "!"}</div>
+    <div class="choice" id="pp-t" style="font-size:22px">${msg.t}</div><p style="margin:0;color:var(--ink-2)">${msg.b}</p>
+    <div class="actions"><button class="btn primary block" data-act="popup-ok" id="popup-ok">ঠিক আছে</button>${p === "member" ? `<button class="btn block" data-act="signout">অন্য অ্যাকাউন্ট দিয়ে প্রবেশ করুন</button>` : ""}</div></div></div>`;
+}
+
 function renderVoter() {
   if (route !== "vote") return;
   const searching = document.activeElement?.id === "q";
-  root.innerHTML = demoBar() + `<main class="shell">${mast()}${voterBody()}<p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${actionBar()}${confirmSheet()}`;
+  const back = V.inBallot && !V.justVoted ? `<button class="crumb" data-act="back-list">← চলমান নির্বাচনে ফিরুন</button>` : crumb();
+  root.innerHTML = demoBar() + `<main class="shell">${mast()}${back}${voterBody()}<p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${actionBar()}${confirmSheet()}${voterPopup()}`;
   if (V.confirming) $("#submit-btn")?.focus();
+  else if (V.popup) $("#popup-ok")?.focus();
   else if (searching && $("#q")) { const q = $("#q"); q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch {} }
 }
 
@@ -381,11 +436,12 @@ async function submitVote() {
   V.submitting = true; renderVoter();
   try {
     await api.castVote(V.election.id, V.selected, user);
-    V.justVoted = true; V.confirming = false; V.voted = true;
+    V.justVoted = true; V.confirming = false; V.voted = true; V.inBallot = false;
   } catch (e) {
     V.confirming = false;
     try { V.voted = await api.hasVoted(V.election.id, user.uid); } catch {}
-    V.err = V.voted ? "" : (e?.code?.includes("permission-denied") ? "ভোট জমা হয়নি। ভোটগ্রহণ বন্ধ হয়ে থাকতে পারে, পাতাটি আবার খুলে দেখুন।" : errText(e));
+    if (V.voted) { V.inBallot = false; V.popup = "voted"; V.err = ""; }
+    else V.err = e?.code?.includes("permission-denied") ? "ভোট জমা হয়নি। ভোটগ্রহণ বন্ধ হয়ে থাকতে পারে, পাতাটি আবার খুলে দেখুন।" : errText(e);
   }
   V.submitting = false; renderVoter();
 }
@@ -409,7 +465,7 @@ async function startAdmin() {
   unsubs.push(api.watchSettings((s) => { const prevLive = A.settings.liveResults; A.settings = s || {}; if (prevLive !== A.settings.liveResults) bindSelected(true); renderAdmin(); }, () => {}));
   unsubs.push(api.watchElections((list) => {
     A.elections = list;
-    if (!A.sel || !list.some((e) => e.id === A.sel)) A.sel = A.settings.activeElection && list.some((e) => e.id === A.settings.activeElection) ? A.settings.activeElection : list[0]?.id || null;
+    if (!A.sel || !list.some((e) => e.id === A.sel)) A.sel = list[0]?.id || null;
     bindSelected(); renderAdmin();
   }, (e) => { toast(errText(e)); A.elections = []; renderAdmin(); }));
   unsubs.push(api.watchMembers((m) => { A.members = m.sort((a, b) => a.email.localeCompare(b.email)); renderAdmin(); }, () => {}));
@@ -483,17 +539,17 @@ function editorPanel() {
 const parseNames = (t) => t.split("\n").map((s) => s.replace(/^\s*[\d০-৯]+[.)।]\s*/, "").trim()).filter(Boolean);
 
 function electionPanel(e) {
-  const isActive = A.settings.activeElection === e.id;
   const restrict = !!A.settings.restrict;
   const voted = A.voters.length;
   const pool = restrict ? A.members.length : 0;
-  const head = `<div class="panel-head"><div>${statusPill(e.status)}${isActive ? ' <span class="status" style="margin-left:10px">· ভোটাররা এটি দেখছেন</span>' : ""}<h2>${esc(e.title)}</h2></div>
-    <div class="row-gap">${actionsFor(e, isActive)}</div></div>`;
+  const head = `<div class="panel-head"><div>${statusPill(e.status)}<h2>${esc(e.title)}</h2></div>
+    <div class="row-gap">${actionsFor(e)}</div></div>`;
 
   if (e.status === "draft") {
     return head + `<div class="card stack"><div class="section-title"><h3>প্রার্থী</h3><span>${bn(e.candidates.length)} জন</span></div>
       <ol class="plain-list">${e.candidates.map((c, i) => `<li><div class="who"><b>${bn(i + 1)}. ${esc(c.name)}</b></div></li>`).join("")}</ol></div>
-      <div class="note">${ICON.info}<div>ভোটগ্রহণ শুরু করলে প্রার্থী তালিকা আর বদলানো যাবে না। শুরু করার আগে নামগুলো আরেকবার মিলিয়ে নিন।</div></div>`;
+      <div class="note">${ICON.info}<div>ভোটগ্রহণ শুরু করলে প্রার্থী তালিকা আর বদলানো যাবে না, আর তখন থেকেই নিচের লিংকে ভোট দেওয়া যাবে। শুরু করার আগে নামগুলো আরেকবার মিলিয়ে নিন।</div></div>
+      <div class="share"><code>${esc(electionLink(e.id))}</code><button class="btn sm" data-act="copy-link" data-v="${esc(e.id)}">কপি</button></div>`;
   }
 
   const stats = `<div class="stats">
@@ -501,8 +557,9 @@ function electionPanel(e) {
     <div class="stat"><div class="k">প্রার্থী</div><div class="v">${bn(e.candidates.length)}</div></div>
     <div class="stat"><div class="k">কারা ভোট দিতে পারবেন</div><div class="v" style="font-size:16px;padding-top:8px">${restrict ? "শুধু তালিকার ইমেইল" : "লিংক পাওয়া যে কেউ"}</div></div></div>`;
 
-  const share = e.status === "open" ? `<div><div class="section-title"><h3>ভোটারদের লিংক</h3><span>সবাইকে এই লিংকটি পাঠান</span></div>
-    <div class="share"><code>${esc(voterLink())}</code><button class="btn sm primary" data-act="copy-link">কপি</button></div></div>` : "";
+  const share = `<div><div class="section-title"><h3>এই নির্বাচনের লিংক</h3><span>${e.status === "open" ? "ভোটারদের এই লিংকটি পাঠান" : "ভোটগ্রহণ চলার সময়ই শুধু ভোট দেওয়া যাবে"}</span></div>
+    <div class="share"><code>${esc(electionLink(e.id))}</code><button class="btn sm primary" data-act="copy-link" data-v="${esc(e.id)}">কপি</button></div>
+    <p class="hint" style="font-size:12px;color:var(--ink-3);margin:8px 2px 0">প্রতিটি নির্বাচনের লিংক আলাদা। এই লিংক যাঁরা পাবেন শুধু তাঁরাই এই নির্বাচনে ভোট দিতে পারবেন।</p></div>`;
 
   let results;
   if (A.tally) {
@@ -524,7 +581,7 @@ function electionPanel(e) {
   return head + stats + share + `<div>${results}${liveToggle ? `<div style="margin-top:4px">${liveToggle}</div>` : ""}</div>` + voters;
 }
 
-function actionsFor(e, isActive) {
+function actionsFor(e) {
   const isOwner = user.email === OWNER || (api.demo && user.uid === "owner");
   const b = [];
   if (e.status === "draft") {
@@ -532,10 +589,8 @@ function actionsFor(e, isActive) {
     if (isOwner) b.push(`<button class="btn sm danger" data-act="ask-delete">মুছুন</button>`);
     b.push(`<button class="btn sm primary" data-act="ask-open" ${e.candidates.length < 2 ? "disabled" : ""}>ভোটগ্রহণ শুরু করুন</button>`);
   } else if (e.status === "open") {
-    if (!isActive) b.push(`<button class="btn sm" data-act="make-active">ভোটারদের এটি দেখান</button>`);
     b.push(`<button class="btn sm primary" data-act="ask-close">ভোটগ্রহণ শেষ করুন</button>`);
   } else {
-    if (!isActive) b.push(`<button class="btn sm" data-act="make-active">ভোটারদের এটি দেখান</button>`);
     b.push(`<button class="btn sm" data-act="ask-reopen">আবার চালু করুন</button>`);
     if (isOwner) b.push(`<button class="btn sm danger" data-act="ask-delete">মুছুন</button>`);
   }
@@ -559,7 +614,7 @@ function adminsTab(isOwner) {
     <div class="card"><div class="section-title"><h3>মূল অ্যাডমিন</h3></div><ul class="plain-list"><li><div class="who"><b>${esc(OWNER || "—")}</b><span>সব নিয়ন্ত্রণ · অন্য অ্যাডমিন যোগ/বাদ দিতে পারেন</span></div></li></ul></div>
     ${isOwner ? `<div class="card stack"><div class="section-title"><h3>অ্যাডমিন যোগ করুন</h3><span>যাঁর Gmail দেবেন তিনি এই প্যানেলে ঢুকতে পারবেন</span></div>
       <div class="row-gap"><input class="input" id="adm-email" type="email" placeholder="name@gmail.com" style="flex:1;min-width:200px"><button class="btn primary sm" data-act="add-admin">যোগ করুন</button></div>
-      <div class="note">${ICON.info}<div>অ্যাডমিনরা নির্বাচন চালু/বন্ধ ও ভোটার তালিকা দেখতে পারেন, কিন্তু কে কাকে ভোট দিয়েছেন তা দেখতে পারেন না, আর ভোটের সংখ্যাও বদলাতে পারেন না। প্যানেলের লিংক: <b>${esc(voterLink().replace(/\/$/, ""))}/admin</b></div></div></div>` : ""}
+      <div class="note">${ICON.info}<div>অ্যাডমিনরা নির্বাচন চালু/বন্ধ ও ভোটার তালিকা দেখতে পারেন, কিন্তু কে কাকে ভোট দিয়েছেন তা দেখতে পারেন না, আর ভোটের সংখ্যাও বদলাতে পারেন না। তাঁকে এই লিংকটি পাঠান: <b>${esc(baseLink())}</b> — সেখানে <b>অ্যাডমিন</b> বেছে নিয়ে নিজের Gmail দিয়ে প্রবেশ করবেন।</div></div></div>` : ""}
     <div class="card"><div class="section-title"><h3>অন্যান্য অ্যাডমিন</h3><span>${bn(A.admins.length)} জন</span></div>
       <ul class="plain-list">${A.admins.length ? A.admins.map((a) => `<li><div class="who"><b>${esc(a.email)}</b></div>${isOwner ? `<button class="linkish" data-act="rm-admin" data-v="${esc(a.email)}">বাদ দিন</button>` : ""}</li>`).join("") : `<li><div class="who"><span>আর কেউ যুক্ত নেই</span></div></li>`}</ul></div></div>`;
 }
@@ -577,7 +632,7 @@ function renderAdmin() {
   const edTitle = $("#ed-title")?.value, edNames = $("#ed-names")?.value;
   if (A.edit && edTitle !== undefined) { A.edit.title = edTitle; A.edit.text = edNames; }
   const scrollY = window.scrollY;
-  root.innerHTML = demoBar() + `<main class="shell wide">${mast()}${adminBody()}</main>${adminConfirm()}`;
+  root.innerHTML = demoBar() + `<main class="shell wide">${mast()}${crumb()}${adminBody()}</main>${adminConfirm()}`;
   window.scrollTo(0, scrollY);
   if (keep && document.getElementById(keep) && !A.confirm) {
     const el = document.getElementById(keep); el.focus();
@@ -598,18 +653,23 @@ root.addEventListener("click", async (ev) => {
   const t = ev.target.closest("[data-act]");
   if (!t) return;
   const act = t.dataset.act, v = t.dataset.v;
-  if ((act === "sheet-bg" || act === "aconf-bg") && ev.target !== t) return;
+  if ((act === "sheet-bg" || act === "aconf-bg" || (act === "popup-ok" && t.classList.contains("scrim"))) && ev.target !== t) return;
   switch (act) {
     case "signin":
       t.disabled = true;
       if (api.demo) api.demoAs = route === "admin" ? "owner" : "member";
       try { await api.signIn(); } catch (e) { toast(errText(e)); }
       t.disabled = false; break;
-    case "signout": V.justVoted = false; await api.signOut(); break;
+    case "signout": V.justVoted = false; V.popup = null; V.inBallot = false; await api.signOut(); break;
     case "copy-here": copyText(location.href); break;
-    case "demo-view":
-      if (route === v) break;
-      route = v; await api.signOut(); boot(); break;
+    case "role": setRoute(v); break;
+    case "home": setRoute("home"); break;
+    case "open-ballot":
+      if (V.voted) { V.popup = "voted"; renderVoter(); break; }
+      if (!V.member) { V.popup = "member"; renderVoter(); break; }
+      V.inBallot = true; V.err = ""; renderVoter(); window.scrollTo(0, 0); break;
+    case "back-list": V.inBallot = false; V.confirming = false; renderVoter(); break;
+    case "popup-ok": V.popup = null; renderVoter(); break;
 
     // voter
     case "review": if (V.selected) { V.confirming = true; renderVoter(); } break;
@@ -645,8 +705,7 @@ root.addEventListener("click", async (ev) => {
     case "ask-delete": { const e = selected(); A.confirm = { title: "নির্বাচনটি মুছবেন?", body: `“${esc(e.title)}” তালিকা থেকে মুছে যাবে। এটি ফেরানো যাবে না।`, ok: "মুছে ফেলুন", danger: true, run: async () => { await api.deleteElection(e.id); A.sel = null; }, msg: "মুছে ফেলা হয়েছে" }; renderAdmin(); break; }
     case "aconf-ok": { const c = A.confirm; await adminRun(c.run, c.msg); break; }
     case "aconf-no": case "aconf-bg": if (!A.busy) { A.confirm = null; renderAdmin(); } break;
-    case "make-active": adminRun(() => api.updateSettings({ activeElection: A.sel }), "ভোটাররা এখন এই নির্বাচনটি দেখবেন"); break;
-    case "copy-link": copyText(voterLink()); break;
+    case "copy-link": copyText(electionLink(v)); break;
     case "add-members": {
       const lines = $("#mem-text").value.split("\n").map((s) => s.trim()).filter(Boolean);
       const list = [], bad = [];
@@ -687,21 +746,23 @@ document.addEventListener("keydown", (ev) => {
   if (V.confirming && !V.submitting) { V.confirming = false; renderVoter(); }
   if (A.confirm && !A.busy) { A.confirm = null; renderAdmin(); }
 });
-window.addEventListener("hashchange", () => {
-  const r = location.hash === "#admin" || /\/admin\/?$/.test(location.pathname) ? "admin" : "vote";
-  if (r !== route) { route = r; boot(); }
-});
+window.addEventListener("popstate", () => { const r = routeFromUrl(); if (r !== route) { route = r; boot(); } });
+window.addEventListener("hashchange", () => { const r = routeFromUrl(); if (r !== route) { route = r; boot(); } });
 
 /* ── Boot ────────────────────────────────────────── */
 let authUnsub = null;
 function boot() {
   document.title = route === "admin" ? `অ্যাডমিন · ${ORG}` : `নির্বাচন · ${ORG}`;
+  clearSubs(); clearSel(); boundKey = "";
   authUnsub?.();
   user = undefined;
-  route === "admin" ? (A.isAdmin = undefined, renderAdmin()) : (startVoter(), renderVoter());
+  if (route === "home") renderHome();
+  else if (route === "admin") { A.isAdmin = undefined; renderAdmin(); }
+  else { startVoter(); renderVoter(); }
   authUnsub = api.onAuth((u) => {
     user = u || null;
-    if (route === "admin") startAdmin();
+    if (route === "home") renderHome();
+    else if (route === "admin") startAdmin();
     else { V.checkedFor = ""; if (!user) V.justVoted = false; checkVoter(); renderVoter(); }
   });
 }

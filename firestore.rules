@@ -81,7 +81,10 @@ service cloud.firestore {
 
     // ── নির্বাচন ─────────────────────────────────
     match /elections/{eid} {
-      allow read: if true;
+      // লিংকের কোড (নির্বাচনের id) জানলেই শুধু একটি নির্বাচন খোলা যায়;
+      // সব নির্বাচনের তালিকা শুধু অ্যাডমিন দেখতে পারেন।
+      allow get: if true;
+      allow list: if isAdmin();
       allow create: if isAdmin() && request.resource.data.status == 'draft';
       allow update: if isAdmin()
         && request.resource.data.status in ['draft', 'open', 'closed']
