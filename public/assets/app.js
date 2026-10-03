@@ -20,6 +20,13 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const collator = new Intl.Collator("bn");
 
 const ICON = {
+  back: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  checkSm: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  checkBig: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5.5 12.5 4 4 9-9.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  stepDraft: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 12.5V13h.5l7.6-7.6-.5-.5L3 12.5Zm8.6-8.6.5.5 1-1-.5-.5-1 1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+  stepOpen: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11h16v9H4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 11V4.5h8V11" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  stepClosed: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.3 7V5.2a2.7 2.7 0 0 1 5.4 0V7" stroke="currentColor" stroke-width="1.4"/></svg>',
+  stepResult: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 13V8m5 5V3m5 10V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   ballot: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11h16v9H4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 11V4.5h8V11" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m9.8 7.6 1.6 1.6 3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 15h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   ballotBig: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11h16v9H4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 11V4.5h8V11" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 15h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
   key: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="12" r="3.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.6 12H21m-3 0v3m-3-3v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
@@ -289,13 +296,14 @@ function setRoute(r, replace) {
 }
 
 function mast() {
+  const initial = user ? esc((user.name || user.email || "?").trim().charAt(0).toUpperCase()) : "";
   const who = user
-    ? `<div class="who"><span title="${esc(user.email)}">${esc(user.email)}</span><button class="linkish" data-act="signout">বের হন</button></div>`
+    ? `<div class="who"><span class="avatar" aria-hidden="true">${initial}</span><span class="em" title="${esc(user.email)}">${esc(user.email)}</span><button class="btn ghost sm" data-act="signout">বের হন</button></div>`
     : "";
-  return `<header class="mast"><img src="${LOGO}" alt="${esc(ORG)} লোগো" width="44" height="44"><div class="org"><b>${esc(ORG)}</b><span>${esc(ORG_EN)}</span></div>${who}</header>`;
+  return `<header class="topbar"><div class="topbar-in ${route === "admin" ? "wide" : ""}"><div class="brand"><img src="${LOGO}" alt="${esc(ORG)} লোগো" width="36" height="36"><div class="org"><b>${esc(ORG)}</b><span>${esc(ORG_EN)}</span></div></div>${route === "admin" && user ? `<span class="chip chip-soft">অ্যাডমিন প্যানেল</span>` : ""}${who}</div></header>`;
 }
 function crumb(label) {
-  return `<button class="crumb" data-act="home">← ${label || "শুরুতে ফিরুন"}</button>`;
+  return `<button class="crumb" data-act="home"><span class="crumb-ic" aria-hidden="true">${ICON.back}</span>${label || "শুরুতে ফিরুন"}</button>`;
 }
 function demoBar() {
   if (!api?.demo) return "";
@@ -324,8 +332,8 @@ const rerender = () => (route === "home" ? renderHome() : route === "admin" ? re
 /* ═══════════════════ HOME (ভূমিকা বাছাই) ═══════════════════ */
 function renderHome() {
   if (route !== "home") return;
-  if (user === undefined && !manualHome) { root.innerHTML = demoBar() + `<main class="shell">${mast()}<div class="spin" aria-label="লোড হচ্ছে"></div></main>`; return; }
-  root.innerHTML = demoBar() + `<main class="shell">${mast()}
+  if (user === undefined && !manualHome) { root.innerHTML = demoBar() + `${mast()}<main class="shell"><div class="spin" aria-label="লোড হচ্ছে"></div></main>`; return; }
+  root.innerHTML = demoBar() + `${mast()}<main class="shell">
     <section class="head"><span class="status">${CODE ? "নির্বাচনের লিংক" : "স্বাগতম"}</span><h1>কীভাবে প্রবেশ করবেন?</h1>
     <p class="lede">ভোট দিতে <b>ভোটার</b> বেছে নিন। নির্বাচন পরিচালনার জন্য <b>অ্যাডমিন</b>।</p></section>
     <div class="roles">
@@ -493,7 +501,7 @@ function ballotRows() {
 
 function receipt() {
   const more = votableList().some((e) => V.voted[e.id] === false);
-  return `<div class="card receipt fresh"><div class="big-seal">ভোট</div>
+  return `<div class="card receipt fresh"><div class="big-check">${ICON.checkBig}</div>
     <h2>আপনার ভোট জমা হয়েছে</h2>
     <p>ধন্যবাদ। আপনি কাকে ভোট দিয়েছেন তা কোথাও সংরক্ষিত হয়নি, শুধু প্রার্থীর মোট ভোট এক বেড়েছে।</p>
     ${more ? `<p style="margin-top:10px"><b>আরও চলমান নির্বাচনে আপনার ভোট দেওয়া বাকি আছে।</b></p>` : ""}
@@ -524,7 +532,7 @@ function voterPopup() {
   const p = V.popup; if (!p) return "";
   const e = votableList().find((x) => x.id === p.eid);
   return `<div class="scrim" data-act="popup-ok"><div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="pp-t">
-    <div class="big-seal sm" aria-hidden="true">ভোট</div>
+    <div class="big-check sm" aria-hidden="true">${ICON.checkBig}</div>
     <div class="choice" id="pp-t" style="font-size:22px">আপনি ইতিমধ্যে ভোট দিয়েছেন</div>
     <p style="margin:0;color:var(--ink-2)"><b>${esc(user?.email || "")}</b> দিয়ে “${esc(e?.title || "")}”-এ ভোট দেওয়া হয়ে গেছে। একজন ভোটার একটি নির্বাচনে একবারই ভোট দিতে পারেন।</p>
     <div class="actions"><button class="btn primary block" data-act="popup-ok" id="popup-ok">ঠিক আছে</button></div></div></div>`;
@@ -533,8 +541,8 @@ function voterPopup() {
 function renderVoter() {
   if (route !== "vote") return;
   const searching = document.activeElement?.id === "q";
-  const back = V.inBallot && !V.justVoted ? `<button class="crumb" data-act="back-list">← চলমান নির্বাচনে ফিরুন</button>` : crumb();
-  root.innerHTML = demoBar() + `<main class="shell">${mast()}${back}${voterBody()}<p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${actionBar()}${confirmSheet()}${voterPopup()}${signoutSheet()}`;
+  const back = V.inBallot && !V.justVoted ? `<button class="crumb" data-act="back-list"><span class="crumb-ic" aria-hidden="true">${ICON.back}</span>চলমান নির্বাচনে ফিরুন</button>` : crumb();
+  root.innerHTML = demoBar() + `${mast()}<main class="shell">${back}${voterBody()}<p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${actionBar()}${confirmSheet()}${voterPopup()}${signoutSheet()}`;
   if (askSignout) $("#so-no")?.focus();
   else if (V.confirming) $("#submit-btn")?.focus();
   else if (V.popup) $("#popup-ok")?.focus();
@@ -655,22 +663,25 @@ const parseNames = (t) => t.split("\n").map((s) => s.replace(/^\s*[\d০-৯]+[.
 function electionPanel(e) {
   const voted = A.voters.length;
   const pool = A.members.length;
-  const head = `<div class="panel-head"><div>${statusPill(e.status)}<h2>${esc(e.title)}</h2></div>
-    <div class="row-gap">${actionsFor(e)}</div></div>`;
+  const steps = [["draft", "খসড়া", ICON.stepDraft], ["open", "ভোটগ্রহণ", ICON.stepOpen], ["closed", "ভোট শেষ", ICON.stepClosed], ["public", "ফল প্রকাশ", ICON.stepResult]];
+  const at = e.status === "draft" ? 0 : e.status === "open" ? 1 : e.resultsPublic ? 3 : 2;
+  const stepper = `<ol class="stepper">${steps.map(([k, l, ic], i) => `<li class="${i < at ? "done" : i === at ? "now" : ""}"><span class="dot">${i < at ? ICON.checkSm : ic}</span><span class="lb">${l}</span></li>`).join("")}</ol>`;
+  const head = `<div class="card hero"><div class="panel-head"><div>${statusPill(e.status)}<h2>${esc(e.title)}</h2></div>
+    <div class="row-gap">${actionsFor(e)}</div></div>${stepper}`;
 
   if (e.status === "draft") {
-    return head + `<div class="card stack"><div class="section-title"><h3>প্রার্থী</h3><span>${bn(e.candidates.length)} জন</span></div>
+    return head + `</div><div class="card stack"><div class="section-title"><h3>প্রার্থী</h3><span>${bn(e.candidates.length)} জন</span></div>
       <ol class="plain-list">${e.candidates.map((c, i) => `<li><div class="who"><b>${bn(i + 1)}. ${esc(c.name)}</b></div></li>`).join("")}</ol></div>
       <div class="note">${ICON.info}<div>ভোটগ্রহণ শুরু করলে প্রার্থী তালিকা আর বদলানো যাবে না, আর তখন থেকেই নিচের লিংকে ভোট দেওয়া যাবে। শুরু করার আগে নামগুলো আরেকবার মিলিয়ে নিন।</div></div>
-      <div class="share"><code>${esc(electionLink(e.id))}</code><button class="btn sm" data-act="copy-link" data-v="${esc(e.id)}">কপি</button></div>`;
+      <div class="card"><div class="section-title"><h3>এই নির্বাচনের লিংক</h3><span>শুরু করার পর ভোটারদের পাঠান</span></div><div class="share"><code>${esc(electionLink(e.id))}</code><button class="btn sm" data-act="copy-link" data-v="${esc(e.id)}">কপি</button></div></div>`;
   }
 
-  const stats = `<div class="stats">
+  const stats = `<div class="stats in-hero">
     <div class="stat"><div class="k">ভোট পড়েছে</div><div class="v">${bn(voted)}${pool ? `<small> / ${bn(pool)}</small>` : ""}</div>${pool ? `<div class="meter"><i style="width:${Math.min(100, (voted / pool) * 100)}%"></i></div>` : ""}</div>
     <div class="stat"><div class="k">প্রার্থী</div><div class="v">${bn(e.candidates.length)}</div></div>
-    <div class="stat"><div class="k">অনুমোদিত ভোটার</div><div class="v">${bn(pool)}</div></div></div>`;
+    <div class="stat"><div class="k">অনুমোদিত ভোটার</div><div class="v">${bn(pool)}</div></div></div></div>`;
 
-  const share = `<div><div class="section-title"><h3>এই নির্বাচনের লিংক</h3><span>${e.status === "open" ? "ভোটারদের এই লিংকটি পাঠান" : "ভোটগ্রহণ চলার সময়ই শুধু ভোট দেওয়া যাবে"}</span></div>
+  const share = `<div class="card"><div class="section-title"><h3>এই নির্বাচনের লিংক</h3><span>${e.status === "open" ? "ভোটারদের এই লিংকটি পাঠান" : "ভোটগ্রহণ চলার সময়ই শুধু ভোট দেওয়া যাবে"}</span></div>
     <div class="share"><code>${esc(electionLink(e.id))}</code><button class="btn sm primary" data-act="copy-link" data-v="${esc(e.id)}">কপি</button></div>
     <p class="hint" style="font-size:12px;color:var(--ink-3);margin:8px 2px 0">প্রতিটি নির্বাচনের লিংক আলাদা। এই লিংক যাঁরা পাবেন শুধু তাঁরাই এই নির্বাচনে ভোট দিতে পারবেন।</p></div>`;
 
@@ -754,7 +765,7 @@ function renderAdmin() {
   const edTitle = $("#ed-title")?.value, edNames = $("#ed-names")?.value;
   if (A.edit && edTitle !== undefined) { A.edit.title = edTitle; A.edit.text = edNames; }
   const scrollY = window.scrollY;
-  root.innerHTML = demoBar() + `<main class="shell wide">${mast()}${crumb()}${adminBody()}</main>${adminConfirm()}${signoutSheet()}`;
+  root.innerHTML = demoBar() + `${mast()}<main class="shell wide">${crumb()}${adminBody()}</main>${adminConfirm()}${signoutSheet()}`;
   window.scrollTo(0, scrollY);
   if (keep && document.getElementById(keep) && !A.confirm) {
     const el = document.getElementById(keep); el.focus();
@@ -897,8 +908,8 @@ function boot() {
 }
 
 (async function init() {
-  root.innerHTML = `<main class="shell">${mast()}<div class="spin"></div></main>`;
+  root.innerHTML = `${mast()}<main class="shell"><div class="spin"></div></main>`;
   try { api = DEMO ? demoBackend() : await firebaseBackend(); }
-  catch (e) { root.innerHTML = `<main class="shell">${mast()}<section class="head"><h1>সংযোগ করা যায়নি</h1><p class="lede">ইন্টারনেট সংযোগ দেখে পাতাটি আবার খুলুন।</p></section></main>`; return; }
+  catch (e) { root.innerHTML = `${mast()}<main class="shell"><section class="head"><h1>সংযোগ করা যায়নি</h1><p class="lede">ইন্টারনেট সংযোগ দেখে পাতাটি আবার খুলুন।</p></section></main>`; return; }
   boot();
 })();
