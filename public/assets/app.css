@@ -576,6 +576,28 @@ h1 {
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-50); }
 textarea.input { min-height: 220px; resize: vertical; line-height: 1.7; }
 
+/* candidate rows */
+.crows { display: flex; flex-direction: column; gap: 8px; }
+.crow { display: grid; grid-template-columns: 32px minmax(0, 1fr) 36px; gap: 10px; align-items: center; }
+.crow .no {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--line-2); color: var(--ink-2); font-size: 13px; font-weight: 500;
+}
+.crow .input { height: 42px; padding-block: 0; }
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center;
+  border: 1px solid transparent; background: transparent; color: var(--ink-3); cursor: pointer;
+}
+.icon-btn:hover { background: var(--danger-50); color: var(--danger); }
+.icon-btn[disabled] { opacity: .3; cursor: not-allowed; background: transparent; color: var(--ink-3); }
+
+/* add-member form */
+.mem-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 12px; align-items: end; }
+.mem-form .btn { height: 44px; }
+@media (max-width: 640px) { .mem-form { grid-template-columns: 1fr; } .mem-form .btn { width: 100%; } }
+.input.bad { border-color: #FDA29B; box-shadow: 0 0 0 4px var(--danger-50); }
+.btn svg { flex: none; }
+
 .toggle {
   display: flex; gap: 14px; align-items: flex-start; justify-content: space-between;
   padding: 14px 0; border-bottom: 1px solid var(--line-2);

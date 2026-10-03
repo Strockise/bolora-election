@@ -20,6 +20,8 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const collator = new Intl.Collator("bn");
 
 const ICON = {
+  plus: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
   back: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   checkSm: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   checkBig: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5.5 12.5 4 4 9-9.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -569,7 +571,7 @@ async function submitVote() {
 }
 
 /* ═══════════════════ ADMIN ═══════════════════ */
-const A = { isAdmin: undefined, tab: "elections", settings: {}, elections: undefined, sel: null, voters: [], tally: null, members: [], requests: [], admins: [], edit: null, confirm: null, busy: false, voterQ: "" };
+const A = { isAdmin: undefined, tab: "elections", settings: {}, elections: undefined, sel: null, voters: [], tally: null, members: [], memDraft: { name: "", email: "" }, requests: [], admins: [], edit: null, confirm: null, busy: false, voterQ: "" };
 let selUnsubs = [];
 const clearSel = () => { selUnsubs.forEach((u) => u()); selUnsubs = []; };
 
@@ -647,21 +649,35 @@ function electionsTab() {
   return `<div class="admin-grid">${side}<section class="panel">${main}</section></div>`;
 }
 
+function candCount(names) {
+  const list = names.map((n) => n.trim()).filter(Boolean);
+  const dup = list.length !== new Set(list).size;
+  return `${bn(list.length)} জন প্রার্থী${dup ? ` · <span style="color:var(--danger)">একই নাম একাধিকবার আছে</span>` : ""}`;
+}
+function candRows(names) {
+  return names.map((n, i) => `<div class="crow"><span class="no">${bn(i + 1)}</span>
+    <input class="input" id="cn-${i}" data-ci="${i}" value="${esc(n)}" placeholder="প্রার্থীর পূর্ণ নাম" autocomplete="off" aria-label="প্রার্থী ${bn(i + 1)}-এর নাম">
+    <button class="icon-btn" data-act="rm-cand" data-v="${i}" aria-label="প্রার্থী ${bn(i + 1)} বাদ দিন" ${names.length <= 1 ? "disabled" : ""}>${ICON.x}</button></div>`).join("");
+}
 function editorPanel() {
   const ed = A.edit;
-  const names = parseNames(ed.text);
   const others = (A.elections || []).filter((e) => e.id !== ed.id && e.candidates?.length);
+  const canFill = others.length || A.members.some((m) => m.name);
   return `<div class="panel-head"><div><span class="status">${ed.isNew ? "নতুন নির্বাচন" : "খসড়া সম্পাদনা"}</span><h2>${esc(ed.title || "পদের নাম দিন")}</h2></div></div>
     <div class="card stack">
-      <div class="field"><label for="ed-title">পদের নাম / নির্বাচনের শিরোনাম</label><input class="input" id="ed-title" value="${esc(ed.title)}" placeholder="যেমন: সভাপতি নির্বাচন"></div>
-      <div class="field"><label for="ed-names">প্রার্থীদের নাম <span style="font-weight:400;color:var(--ink-3)">· প্রতি লাইনে একজন</span></label>
-        <textarea class="input" id="ed-names" placeholder="মোঃ আব্দুল করিম&#10;রফিকুল ইসলাম&#10;…">${esc(ed.text)}</textarea>
-        <span class="hint" id="ed-count">${bn(names.length)} জন প্রার্থী${names.length !== new Set(names).size ? " · একই নাম একাধিকবার আছে" : ""}</span></div>
-      ${others.length || A.members.some((m) => m.name) ? `<div class="row-gap"><span class="hint" style="font-size:12px;color:var(--ink-3)">নাম কপি করুন:</span>${A.members.some((m) => m.name) ? `<button class="btn sm" data-act="fill-members">ভোটার তালিকা থেকে</button>` : ""}${others.slice(0, 3).map((e) => `<button class="btn sm" data-act="fill-from" data-v="${e.id}">${esc(e.title)}</button>`).join("")}</div>` : ""}
-      <div class="row-gap" style="justify-content:space-between"><button class="btn" data-act="ed-cancel">বাতিল</button><button class="btn primary" data-act="ed-save" ${A.busy ? "disabled" : ""}>সংরক্ষণ করুন</button></div>
-    </div>`;
+      <div class="field"><label for="ed-title">পদের নাম / নির্বাচনের শিরোনাম</label><input class="input" id="ed-title" value="${esc(ed.title)}" placeholder="যেমন: সভাপতি নির্বাচন" autocomplete="off"></div>
+    </div>
+    <div class="card stack">
+      <div class="section-title"><h3>প্রার্থী</h3><span id="ed-count">${candCount(ed.names)}</span></div>
+      <div class="crows" id="cand-rows">${candRows(ed.names)}</div>
+      <div class="row-gap" style="justify-content:space-between">
+        <button class="btn sm" data-act="add-cand">${ICON.plus} আরেকজন প্রার্থী</button>
+        ${canFill ? `<div class="row-gap"><span class="hint">অন্য তালিকা থেকে নিন:</span>${A.members.some((m) => m.name) ? `<button class="btn ghost sm" data-act="fill-members">অনুমোদিত ভোটার</button>` : ""}${others.slice(0, 3).map((e) => `<button class="btn ghost sm" data-act="fill-from" data-v="${e.id}">${esc(e.title)}</button>`).join("")}</div>` : ""}
+      </div>
+      <p class="hint" style="margin:0">নাম লিখে Enter চাপলে পরের ঘরে চলে যাবে।</p>
+    </div>
+    <div class="row-gap" style="justify-content:flex-end"><button class="btn" data-act="ed-cancel">বাতিল</button><button class="btn primary" data-act="ed-save" ${A.busy ? "disabled" : ""}>সংরক্ষণ করুন</button></div>`;
 }
-const parseNames = (t) => t.split("\n").map((s) => s.replace(/^\s*[\d০-৯]+[.)।]\s*/, "").trim()).filter(Boolean);
 
 function electionPanel(e) {
   const voted = A.voters.length;
@@ -732,13 +748,18 @@ function votersTab() {
       <p style="font-size:13px;margin:0 0 6px">ভোটার হিসেবে Google দিয়ে প্রবেশ করলে নাম এখানে আসে। চেনা সদস্য হলে অনুমোদন দিন, তখনই তিনি চলমান নির্বাচনে ভোট দিতে পারবেন।</p>
       <ul class="plain-list">${pending.length ? pending.map((r) => row(r, `<button class="btn sm" data-act="reject" data-v="${esc(r.uid)}">বাতিল</button><button class="btn sm primary" data-act="approve" data-v="${esc(r.uid)}">অনুমোদন দিন</button>`)).join("") : `<li><div class="who"><span>নতুন কোনো আবেদন নেই</span></div></li>`}</ul></div>
 
+    <div class="card stack"><div class="section-title"><h3>সদস্য সরাসরি যোগ করুন</h3><span>যোগ করা সদস্যরা আগে থেকেই অনুমোদিত থাকবেন</span></div>
+      <form class="mem-form" id="mem-form" novalidate>
+        <div class="field"><label for="mem-name">নাম</label><input class="input" id="mem-name" value="${esc(A.memDraft.name)}" placeholder="যেমন: রফিকুল ইসলাম" autocomplete="off"></div>
+        <div class="field"><label for="mem-email">Gmail ঠিকানা</label><input class="input" id="mem-email" value="${esc(A.memDraft.email)}" type="email" inputmode="email" placeholder="name@gmail.com" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        <button class="btn primary" type="submit" ${A.busy ? "disabled" : ""}>${ICON.plus} যোগ করুন</button>
+      </form>
+      <p class="hint" id="mem-msg" style="margin:0">সদস্য এই Gmail দিয়ে প্রথমবার প্রবেশ করলেই সরাসরি ভোট দিতে পারবেন।</p>
+    </div>
+
     <div class="card"><div class="section-title"><h3>অনুমোদিত ভোটার</h3><span>${bn(A.members.length)} জন</span></div>
       <div class="scroll-box"><ul class="plain-list">${A.members.length ? A.members.map((m) => `<li><div class="who"><b>${esc(m.name || "—")}</b><span>${esc(m.email)}</span></div><button class="linkish" data-act="rm-member" data-v="${esc(m.email)}">বাদ দিন</button></li>`).join("") : `<li><div class="who"><span>এখনও কাউকে অনুমোদন দেওয়া হয়নি</span></div></li>`}</ul></div></div>
 
-    <details class="card"><summary style="cursor:pointer;font-weight:600">ইমেইল দিয়ে সরাসরি যোগ করুন</summary>
-      <div class="stack" style="margin-top:12px"><p style="font-size:13px;margin:0">সদস্যদের Gmail আগে থেকে জানা থাকলে এখানে দিন। তাঁরা প্রথমবার প্রবেশ করলেই সরাসরি ভোট দিতে পারবেন, অনুমোদনের অপেক্ষা লাগবে না। প্রতি লাইনে একজন: নাম, ইমেইল।</p>
-      <textarea class="input" id="mem-text" style="min-height:120px" placeholder="রফিকুল ইসলাম, rafiq@gmail.com&#10;শাহানা পারভীন, shahana@gmail.com"></textarea>
-      <div><button class="btn primary sm" data-act="add-members">অনুমোদিত তালিকায় যোগ করুন</button></div></div></details>
 
     ${rejected.length ? `<details class="card"><summary style="cursor:pointer;font-weight:600">বাতিল করা আবেদন · ${bn(rejected.length)} জন</summary>
       <ul class="plain-list" style="margin-top:8px">${rejected.map((r) => row(r, `<button class="btn sm" data-act="approve" data-v="${esc(r.uid)}">অনুমোদন দিন</button>`)).join("")}</ul></details>` : ""}
@@ -765,8 +786,8 @@ function adminConfirm() {
 function renderAdmin() {
   if (route !== "admin") return;
   const keep = document.activeElement?.id;
-  const edTitle = $("#ed-title")?.value, edNames = $("#ed-names")?.value;
-  if (A.edit && edTitle !== undefined) { A.edit.title = edTitle; A.edit.text = edNames; }
+  const edTitle = $("#ed-title")?.value;
+  if (A.edit && edTitle !== undefined) A.edit.title = edTitle;
   const scrollY = window.scrollY;
   root.innerHTML = demoBar() + `${mast()}<main class="shell wide">${user ? "" : crumb()}${adminBody()}</main>${adminConfirm()}${signoutSheet()}`;
   window.scrollTo(0, scrollY);
@@ -820,16 +841,18 @@ root.addEventListener("click", async (ev) => {
     // admin
     case "tab": A.tab = v; A.edit = null; renderAdmin(); break;
     case "pick": A.sel = v; A.edit = null; A.voterQ = ""; bindSelected(); renderAdmin(); break;
-    case "new": A.edit = { isNew: true, title: "", text: "" }; renderAdmin(); $("#ed-title")?.focus(); break;
-    case "edit": { const e = selected(); A.edit = { id: e.id, title: e.title, text: e.candidates.map((c) => c.name).join("\n") }; renderAdmin(); break; }
+    case "new": A.edit = { isNew: true, title: "", names: ["", ""] }; renderAdmin(); $("#ed-title")?.focus(); break;
+    case "edit": { const e = selected(); A.edit = { id: e.id, title: e.title, names: e.candidates.map((c) => c.name) }; renderAdmin(); break; }
+    case "add-cand": addCandRow(A.edit.names.length - 1); break;
+    case "rm-cand": { const i = +v; if (A.edit.names.length > 1) { A.edit.names.splice(i, 1); renderAdmin(); $(`#cn-${Math.max(0, i - 1)}`)?.focus(); } break; }
     case "ed-cancel": A.edit = null; renderAdmin(); break;
-    case "fill-members": $("#ed-names").value = A.members.filter((m) => m.name).map((m) => m.name).join("\n"); $("#ed-names").dispatchEvent(new Event("input", { bubbles: true })); break;
-    case "fill-from": { const e = A.elections.find((x) => x.id === v); $("#ed-names").value = e.candidates.map((c) => c.name).join("\n"); $("#ed-names").dispatchEvent(new Event("input", { bubbles: true })); break; }
+    case "fill-members": A.edit.names = A.members.filter((m) => m.name).map((m) => m.name); renderAdmin(); toast(`${bn(A.edit.names.length)} জনের নাম বসানো হয়েছে`); break;
+    case "fill-from": { const e = A.elections.find((x) => x.id === v); A.edit.names = e.candidates.map((c) => c.name); renderAdmin(); toast(`${bn(A.edit.names.length)} জনের নাম বসানো হয়েছে`); break; }
     case "ed-save": {
       const title = $("#ed-title").value.trim();
-      const names = [...new Set(parseNames($("#ed-names").value))];
+      const names = [...new Set(A.edit.names.map((n) => n.trim()).filter(Boolean))];
       if (!title) { toast("পদের নাম লিখুন"); $("#ed-title").focus(); break; }
-      if (names.length < 2) { toast("অন্তত দুজন প্রার্থীর নাম দিন"); $("#ed-names").focus(); break; }
+      if (names.length < 2) { toast("অন্তত দুজন প্রার্থীর নাম দিন"); const empty = A.edit.names.findIndex((n) => !n.trim()); $(`#cn-${empty < 0 ? 0 : empty}`)?.focus(); break; }
       const ed = A.edit;
       const old = ed.isNew ? [] : selected().candidates;
       const candidates = names.map((name) => ({ id: old.find((c) => c.name === name)?.id || "c" + rid(7), name }));
@@ -847,14 +870,6 @@ root.addEventListener("click", async (ev) => {
     case "aconf-ok": { const c = A.confirm; await adminRun(c.run, c.msg); break; }
     case "aconf-no": case "aconf-bg": if (!A.busy) { A.confirm = null; renderAdmin(); } break;
     case "copy-link": copyText(electionLink(v)); break;
-    case "add-members": {
-      const lines = $("#mem-text").value.split("\n").map((s) => s.trim()).filter(Boolean);
-      const list = [], bad = [];
-      lines.forEach((l) => { const m = l.match(EMAIL_RE); if (!m) return bad.push(l); list.push({ email: m[0].toLowerCase(), name: l.replace(m[0], "").replace(/[,;|<>\t]+/g, " ").trim() }); });
-      if (!list.length) { toast("কোনো সঠিক ইমেইল পাওয়া যায়নি"); break; }
-      await adminRun(() => api.addMembers(list), `${bn(list.length)} জন যোগ হয়েছে${bad.length ? ` · ${bn(bad.length)} লাইনে ইমেইল নেই` : ""}`);
-      break;
-    }
     case "rm-member": adminRun(() => api.removeMember(v), "বাদ দেওয়া হয়েছে"); break;
     case "add-admin": {
       const em = ($("#adm-email").value.match(EMAIL_RE) || [""])[0].toLowerCase();
@@ -864,6 +879,20 @@ root.addEventListener("click", async (ev) => {
     }
     case "rm-admin": adminRun(() => api.removeAdmin(v), "অ্যাডমিন বাদ দেওয়া হয়েছে"); break;
   }
+});
+
+root.addEventListener("submit", async (ev) => {
+  if (ev.target.id !== "mem-form") return;
+  ev.preventDefault();
+  const nameEl = $("#mem-name"), emEl = $("#mem-email"), msg = $("#mem-msg");
+  const name = nameEl.value.trim(), email = emEl.value.trim().toLowerCase();
+  const fail = (text, el) => { msg.textContent = text; msg.style.color = "var(--danger)"; el.focus(); el.classList.add("bad"); };
+  nameEl.classList.remove("bad"); emEl.classList.remove("bad");
+  if (!name) return fail("নাম লিখুন।", nameEl);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return fail("সঠিক Gmail ঠিকানা লিখুন, যেমন name@gmail.com", emEl);
+  if (A.members.some((m) => m.email === email)) return fail("এই Gmail আগেই অনুমোদিত তালিকায় আছে।", emEl);
+  await adminRun(async () => { await api.addMembers([{ email, name }]); A.memDraft = { name: "", email: "" }; }, `${name} যোগ হয়েছেন`);
+  const n = $("#mem-name"); if (n) n.focus();
 });
 
 root.addEventListener("change", (ev) => {
@@ -876,8 +905,25 @@ root.addEventListener("input", (ev) => {
   const t = ev.target;
   if (t.id === "q") { V.query = t.value; $("#ballot").innerHTML = ballotRows(); }
   if (t.id === "vq") { A.voterQ = t.value; const sy = window.scrollY; renderAdmin(); window.scrollTo(0, sy); }
-  if (t.id === "ed-names") { const n = parseNames(t.value); $("#ed-count").textContent = `${bn(n.length)} জন প্রার্থী${n.length !== new Set(n).size ? " · একই নাম একাধিকবার আছে" : ""}`; }
+  if (t.dataset.ci !== undefined && A.edit) { A.edit.names[+t.dataset.ci] = t.value; const c = $("#ed-count"); if (c) c.innerHTML = candCount(A.edit.names); }
+  if (t.id === "mem-name") A.memDraft.name = t.value;
+  if (t.id === "mem-email") A.memDraft.email = t.value;
   if (t.id === "ed-title" && A.edit) { A.edit.title = t.value; }
+});
+
+function addCandRow(after) {
+  A.edit.names.splice(after + 1, 0, "");
+  renderAdmin();
+  $(`#cn-${after + 1}`)?.focus();
+}
+root.addEventListener("keydown", (ev) => {
+  const t = ev.target;
+  if (ev.key === "Enter" && t.dataset?.ci !== undefined && A.edit && !ev.isComposing) {
+    ev.preventDefault();
+    const i = +t.dataset.ci;
+    if (i < A.edit.names.length - 1 && !A.edit.names[i + 1].trim()) $(`#cn-${i + 1}`)?.focus();
+    else addCandRow(i);
+  }
 });
 
 document.addEventListener("keydown", (ev) => {
