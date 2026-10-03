@@ -276,6 +276,8 @@ function routeFromUrl() {
 }
 // আগে কোন ভূমিকায় ঢুকেছিলেন তা এই ডিভাইসে মনে রাখা
 const lastRole = { get() { try { return localStorage.getItem("bhf-role"); } catch { return null; } }, set(r) { try { localStorage.setItem("bhf-role", r); } catch {} } };
+let amAdmin = false;     // লগইন করা ব্যক্তি অ্যাডমিন হলে উপরে "ভোট দিন / অ্যাডমিন প্যানেল" বদলানোর সুযোগ
+let amAdminFor = "";
 let manualHome = false;  // ব্যবহারকারী নিজে "শুরুতে ফিরুন" চাপলে আর স্বয়ংক্রিয়ভাবে সরানো হবে না
 let route = routeFromUrl();
 let user;            // undefined = still checking, null = signed out
@@ -300,7 +302,7 @@ function mast() {
   const who = user
     ? `<div class="who"><span class="avatar" aria-hidden="true">${initial}</span><span class="em" title="${esc(user.email)}">${esc(user.email)}</span><button class="btn ghost sm" data-act="signout">বের হন</button></div>`
     : "";
-  return `<header class="topbar"><div class="topbar-in ${route === "admin" ? "wide" : ""}"><div class="brand"><img src="${LOGO}" alt="${esc(ORG)} লোগো" width="36" height="36"><div class="org"><b>${esc(ORG)}</b><span>${esc(ORG_EN)}</span></div></div>${route === "admin" && user ? `<span class="chip chip-soft">অ্যাডমিন প্যানেল</span>` : ""}${who}</div></header>`;
+  return `<header class="topbar"><div class="topbar-in ${route === "admin" ? "wide" : ""}"><div class="brand"><img src="${LOGO}" alt="${esc(ORG)} লোগো" width="36" height="36"><div class="org"><b>${esc(ORG)}</b><span>${esc(ORG_EN)}</span></div></div>${user && amAdmin ? `<nav class="switch-nav" aria-label="পাতা বদলান"><button data-act="role" data-v="vote" aria-current="${route === "vote"}">ভোট দিন</button><button data-act="role" data-v="admin" aria-current="${route === "admin"}">অ্যাডমিন প্যানেল</button></nav>` : ""}${who}</div></header>`;
 }
 function crumb(label) {
   return `<button class="crumb" data-act="home"><span class="crumb-ic" aria-hidden="true">${ICON.back}</span>${label || "শুরুতে ফিরুন"}</button>`;
@@ -541,7 +543,7 @@ function voterPopup() {
 function renderVoter() {
   if (route !== "vote") return;
   const searching = document.activeElement?.id === "q";
-  const back = V.inBallot && !V.justVoted ? `<button class="crumb" data-act="back-list"><span class="crumb-ic" aria-hidden="true">${ICON.back}</span>চলমান নির্বাচনে ফিরুন</button>` : crumb();
+  const back = V.inBallot && !V.justVoted ? `<button class="crumb" data-act="back-list"><span class="crumb-ic" aria-hidden="true">${ICON.back}</span>চলমান নির্বাচনে ফিরুন</button>` : (user ? "" : crumb());
   root.innerHTML = demoBar() + `${mast()}<main class="shell">${back}${voterBody()}<p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${actionBar()}${confirmSheet()}${voterPopup()}${signoutSheet()}`;
   if (askSignout) $("#so-no")?.focus();
   else if (V.confirming) $("#submit-btn")?.focus();
@@ -579,6 +581,7 @@ async function startAdmin() {
   const ok = await api.isAdmin(user);
   if (!user) return;
   A.isAdmin = ok;
+  if (ok !== amAdmin) { amAdmin = ok; }
   if (!ok) return renderAdmin();
   try { await api.ensureSettings(); } catch {}
   unsubs.push(() => clearSel());
@@ -623,7 +626,7 @@ function adminBody() {
   if (user === undefined) return `<div class="spin"></div>`;
   if (!user) return `<section class="head"><span class="status">পরিচালনা</span><h1>অ্যাডমিন প্যানেল</h1><p class="lede">শুধু অনুমতিপ্রাপ্ত ইমেইল দিয়ে প্রবেশ করা যাবে।</p></section><div class="card stack" style="max-width:420px">${signInButton()}</div>`;
   if (A.isAdmin === undefined) return `<div class="spin"></div>`;
-  if (!A.isAdmin) return `<section class="head"><h1>প্রবেশাধিকার নেই</h1><p class="lede"><b>${esc(user.email)}</b> এই প্যানেলের অ্যাডমিন হিসেবে যুক্ত নেই। মূল অ্যাডমিন আপনার ইমেইল যোগ করলে প্রবেশ করতে পারবেন।</p></section><button class="btn" data-act="signout">অন্য অ্যাকাউন্ট দিয়ে প্রবেশ করুন</button>`;
+  if (!A.isAdmin) return `<section class="head"><h1>প্রবেশাধিকার নেই</h1><p class="lede"><b>${esc(user.email)}</b> এই প্যানেলের অ্যাডমিন হিসেবে যুক্ত নেই। মূল অ্যাডমিন আপনার ইমেইল যোগ করলে প্রবেশ করতে পারবেন।</p></section><div class="row-gap"><button class="btn primary" data-act="role" data-v="vote">ভোটার পাতায় যান</button><button class="btn" data-act="signout">অন্য অ্যাকাউন্ট দিয়ে প্রবেশ করুন</button></div>`;
   const isOwner = user.email === OWNER || (api.demo && user.uid === "owner");
   const pend = A.requests.filter((r) => r.status === "pending").length;
   const tabs = [["elections", "নির্বাচন"], ["voters", "ভোটার" + (pend ? ` <span class="badge">${bn(pend)}</span>` : "")], ["admins", "অ্যাডমিন"]];
@@ -765,7 +768,7 @@ function renderAdmin() {
   const edTitle = $("#ed-title")?.value, edNames = $("#ed-names")?.value;
   if (A.edit && edTitle !== undefined) { A.edit.title = edTitle; A.edit.text = edNames; }
   const scrollY = window.scrollY;
-  root.innerHTML = demoBar() + `${mast()}<main class="shell wide">${crumb()}${adminBody()}</main>${adminConfirm()}${signoutSheet()}`;
+  root.innerHTML = demoBar() + `${mast()}<main class="shell wide">${user ? "" : crumb()}${adminBody()}</main>${adminConfirm()}${signoutSheet()}`;
   window.scrollTo(0, scrollY);
   if (keep && document.getElementById(keep) && !A.confirm) {
     const el = document.getElementById(keep); el.focus();
@@ -798,7 +801,7 @@ root.addEventListener("click", async (ev) => {
     case "signout-ok": askSignout = false; V.justVoted = null; V.popup = null; V.inBallot = null; V.confirming = false; await api.signOut(); break;
     case "copy-here": copyText(location.href); break;
     case "role": setRoute(v); break;
-    case "home": manualHome = true; setRoute("home"); break;
+    case "home": if (user) { setRoute(lastRole.get() === "admin" && amAdmin ? "admin" : "vote"); break; } setRoute("home"); break;
     case "open-ballot":
       if (V.voted[v]) { V.popup = { eid: v }; renderVoter(); break; }
       if (V.voted[v] !== false) break;
@@ -898,8 +901,13 @@ function boot() {
   else { startVoter(); renderVoter(); }
   authUnsub = api.onAuth((u) => {
     user = u || null;
+    if (!user) { amAdmin = false; amAdminFor = ""; }
+    else if (amAdminFor !== user.uid) {
+      amAdminFor = user.uid;
+      api.isAdmin(user).then((v) => { if (user && amAdminFor === user.uid && v !== amAdmin) { amAdmin = v; rerender(); } }).catch(() => {});
+    }
     if (route === "home") {
-      if (user && !manualHome) return setRoute(lastRole.get() === "admin" ? "admin" : "vote", true);
+      if (user) return setRoute(lastRole.get() === "admin" ? "admin" : "vote", true);
       renderHome();
     }
     else if (route === "admin") startAdmin();

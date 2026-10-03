@@ -95,6 +95,26 @@ b, strong { font-weight: 600; }
   .who .em, .topbar .chip-soft, .brand .org span { display: none; }
 }
 
+/* ── Voter / admin switch (admins only) ── */
+.switch-nav {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--subtle); border: 1px solid var(--line); border-radius: 11px;
+}
+.switch-nav button {
+  border: 1px solid transparent; background: none; cursor: pointer;
+  padding: 4px 12px; border-radius: 8px;
+  font-size: 13.5px; font-weight: 500; color: var(--ink-2); white-space: nowrap;
+}
+.switch-nav button:hover { color: var(--ink); }
+.switch-nav button[aria-current="true"] { background: var(--surface); color: var(--accent); border-color: var(--line); box-shadow: var(--shadow-xs); }
+@media (max-width: 560px) {
+  .topbar-in { flex-wrap: wrap; }
+  .switch-nav { order: 3; width: 100%; }
+  .switch-nav button { flex: 1; }
+}
+@media (max-width: 960px) { .switch-nav ~ .who .em { display: none; } }
+.shell > .head:first-child, .shell > .tabs:first-child { margin-top: 6px; }
+
 /* ── Back / breadcrumb ─────────────────── */
 .crumb {
   display: flex; width: fit-content; align-items: center; gap: 10px;
