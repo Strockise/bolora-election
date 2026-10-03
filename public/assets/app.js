@@ -20,6 +20,7 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 const collator = new Intl.Collator("bn");
 
 const ICON = {
+  logout: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 2.75H4A1.25 1.25 0 0 0 2.75 4v8A1.25 1.25 0 0 0 4 13.25h2M10.5 11 13.5 8l-3-3M13.25 8H6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   plus: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   x: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
   back: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -301,8 +302,17 @@ function setRoute(r, replace) {
 
 function mast() {
   const initial = user ? esc((user.name || user.email || "?").trim().charAt(0).toUpperCase()) : "";
+  const pic = (size) => user.photo
+    ? `<span class="avatar ${size}"><img src="${esc(user.photo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><b>${initial}</b></span>`
+    : `<span class="avatar ${size}"><b>${initial}</b></span>`;
   const who = user
-    ? `<div class="who"><span class="avatar" aria-hidden="true">${initial}</span><span class="em" title="${esc(user.email)}">${esc(user.email)}</span><button class="btn ghost sm" data-act="signout">বের হন</button></div>`
+    ? `<div class="profile" id="profile">
+        <button class="profile-btn" data-act="profile" aria-haspopup="true" aria-expanded="false" aria-label="আপনার অ্যাকাউন্ট: ${esc(user.email)}">${pic("")}</button>
+        <div class="profile-menu" role="menu">
+          <div class="pm-head">${pic("lg")}<div class="pm-id"><b>${esc(user.name || "নাম নেই")}</b><span>${esc(user.email)}</span></div></div>
+          <button class="pm-item" role="menuitem" data-act="signout">${ICON.logout}<span>বের হন</span></button>
+        </div>
+      </div>`
     : "";
   return `<header class="topbar"><div class="topbar-in ${route === "admin" ? "wide" : ""}"><div class="brand"><img src="${LOGO}" alt="${esc(ORG)} লোগো" width="36" height="36"><div class="org"><b>${esc(ORG)}</b><span>${esc(ORG_EN)}</span></div></div>${user && amAdmin ? `<nav class="switch-nav" aria-label="পাতা বদলান"><button data-act="role" data-v="vote" aria-current="${route === "vote"}">ভোট দিন</button><button data-act="role" data-v="admin" aria-current="${route === "admin"}">অ্যাডমিন প্যানেল</button></nav>` : ""}${who}</div></header>`;
 }
@@ -817,6 +827,7 @@ root.addEventListener("click", async (ev) => {
       if (api.demo) api.demoAs = route === "admin" ? "owner" : "member";
       try { await api.signIn(); } catch (e) { toast(errText(e)); }
       t.disabled = false; break;
+    case "profile": { const pr = $("#profile"); const open = !pr.classList.contains("open"); pr.classList.toggle("open", open); t.setAttribute("aria-expanded", open); break; }
     case "signout": askSignout = true; rerender(); break;
     case "signout-no": case "signout-bg": askSignout = false; rerender(); break;
     case "signout-ok": askSignout = false; V.justVoted = null; V.popup = null; V.inBallot = null; V.confirming = false; await api.signOut(); break;
@@ -879,6 +890,11 @@ root.addEventListener("click", async (ev) => {
     }
     case "rm-admin": adminRun(() => api.removeAdmin(v), "অ্যাডমিন বাদ দেওয়া হয়েছে"); break;
   }
+});
+
+document.addEventListener("click", (ev) => {
+  const pr = $("#profile");
+  if (pr && pr.classList.contains("open") && !pr.contains(ev.target)) { pr.classList.remove("open"); pr.querySelector(".profile-btn")?.setAttribute("aria-expanded", "false"); }
 });
 
 root.addEventListener("submit", async (ev) => {
