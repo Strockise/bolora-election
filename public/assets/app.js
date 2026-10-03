@@ -126,7 +126,7 @@ async function firebaseBackend() {
     async ensureSettings() {
       const r = d("settings", "app");
       const s = await F.getDoc(r);
-      if (!s.exists()) await F.setDoc(r, { liveResults: false });
+      if (!s.exists()) await F.setDoc(r, { created: true });
     },
     updateSettings: (p) => F.setDoc(d("settings", "app"), p, { merge: true }),
     async createElection(title, candidates) {
@@ -171,7 +171,7 @@ function demoBackend() {
   const seedVoters = ["আলমগীর হোসেন", "রুবিনা ইয়াসমিন", "মোঃ ইউনুস", "সেলিনা বেগম", "জসিম উদ্দিন", "মাসুদ রানা", "শফিকুল ইসলাম", "পারভেজ মোশাররফ", "আয়েশা সিদ্দিকা", "নুরুল আমিন", "ইমরান হোসেন", "সাবিনা ইয়াসমিন", "হাসান মাহমুদ", "রাশেদুল করিম", "ফাতেমা তুজ জোহরা", "আরিফুল হক", "মোস্তফা কামাল", "শামীম আহমেদ", "লিপি আক্তার", "জাকির হোসেন", "রবিউল ইসলাম", "তাসলিমা নাসরিন", "মাহফুজুর রহমান"];
   const st = {
     user: null,
-    settings: { liveResults: false },
+    settings: {},
     elections: {
       e1: { id: "e1", title: "সভাপতি নির্বাচন", status: "open", candidates: cands, candidateIds: cands.map((c) => c.id), resultsPublic: false, createdAt: 2 },
       e2: { id: "e2", title: "সহ-সভাপতি নির্বাচন", status: "open", candidates: cands.slice(3, 9), candidateIds: cands.slice(3, 9).map((c) => c.id), resultsPublic: false, createdAt: 1.5 },
@@ -305,6 +305,16 @@ function inAppNote() {
   return `<div class="note warn">${ICON.info}<div>আপনি Facebook/Messenger-এর ভেতরের ব্রাউজারে আছেন। এখানে Google লগইন কাজ নাও করতে পারে। উপরের <b>⋮</b> মেনু থেকে <b>“Open in browser”</b> বেছে নিন।<div class="row-gap" style="margin-top:8px">${chrome}<button class="btn sm" data-act="copy-here">লিংক কপি করুন</button></div></div></div>`;
 }
 
+let askSignout = false;
+function signoutSheet() {
+  if (!askSignout || !user) return "";
+  return `<div class="scrim" data-act="signout-bg"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="so-t">
+    <div class="choice" id="so-t" style="font-size:22px;margin-top:0">অ্যাকাউন্ট থেকে বের হবেন?</div>
+    <p style="margin:0;color:var(--ink-2)"><b>${esc(user.email)}</b> থেকে বের হয়ে যাবেন। আবার ঢুকতে Google দিয়ে প্রবেশ করতে হবে।</p>
+    <div class="actions"><button class="btn block" data-act="signout-no" id="so-no">না, থাকুন</button><button class="btn danger block" data-act="signout-ok">হ্যাঁ, বের হন</button></div></div></div>`;
+}
+const rerender = () => (route === "home" ? renderHome() : route === "admin" ? renderAdmin() : renderVoter());
+
 /* ═══════════════════ HOME (ভূমিকা বাছাই) ═══════════════════ */
 function renderHome() {
   if (route !== "home") return;
@@ -315,7 +325,7 @@ function renderHome() {
       <button class="role" data-act="role" data-v="vote" id="role-vote"><span class="ic">${ICON.ballot}</span><span class="tx"><b>ভোটার</b><span>পছন্দের প্রার্থীকে ভোট দিন</span></span><span class="ar" aria-hidden="true">→</span></button>
       <button class="role" data-act="role" data-v="admin" id="role-admin"><span class="ic">${ICON.key}</span><span class="tx"><b>অ্যাডমিন</b><span>শুধু নির্বাচন পরিচালকদের জন্য</span></span><span class="ar" aria-hidden="true">→</span></button>
     </div>
-    <p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>`;
+    <p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${signoutSheet()}`;
 }
 
 /* ═══════════════════ VOTER ═══════════════════ */
@@ -468,7 +478,8 @@ function receipt() {
   return `<div class="card receipt fresh"><div class="big-seal">ভোট</div>
     <h2>আপনার ভোট জমা হয়েছে</h2>
     <p>ধন্যবাদ। আপনি কাকে ভোট দিয়েছেন তা কোথাও সংরক্ষিত হয়নি, শুধু প্রার্থীর মোট ভোট এক বেড়েছে।</p>
-    <div class="row-gap" style="margin-top:18px;justify-content:center">${more ? `<button class="btn sm primary" data-act="back-list">বাকি নির্বাচনে ভোট দিন</button>` : `<button class="btn sm" data-act="back-list">চলমান নির্বাচনে ফিরুন</button>`}<button class="btn sm" data-act="signout">বের হন</button></div></div>`;
+    ${more ? `<p style="margin-top:10px"><b>আরও চলমান নির্বাচনে আপনার ভোট দেওয়া বাকি আছে।</b></p>` : ""}
+    <div style="margin-top:18px"><button class="btn primary" data-act="back-list">নির্বাচন পাতায় যান</button></div></div>`;
 }
 
 function actionBar() {
@@ -505,8 +516,9 @@ function renderVoter() {
   if (route !== "vote") return;
   const searching = document.activeElement?.id === "q";
   const back = V.inBallot && !V.justVoted ? `<button class="crumb" data-act="back-list">← চলমান নির্বাচনে ফিরুন</button>` : crumb();
-  root.innerHTML = demoBar() + `<main class="shell">${mast()}${back}${voterBody()}<p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${actionBar()}${confirmSheet()}${voterPopup()}`;
-  if (V.confirming) $("#submit-btn")?.focus();
+  root.innerHTML = demoBar() + `<main class="shell">${mast()}${back}${voterBody()}<p class="foot">${esc(ORG)} · গোপন ব্যালট</p></main>${actionBar()}${confirmSheet()}${voterPopup()}${signoutSheet()}`;
+  if (askSignout) $("#so-no")?.focus();
+  else if (V.confirming) $("#submit-btn")?.focus();
   else if (V.popup) $("#popup-ok")?.focus();
   else if (searching && $("#q")) { const q = $("#q"); q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch {} }
 }
@@ -544,7 +556,7 @@ async function startAdmin() {
   if (!ok) return renderAdmin();
   try { await api.ensureSettings(); } catch {}
   unsubs.push(() => clearSel());
-  unsubs.push(api.watchSettings((s) => { const prevLive = A.settings.liveResults; A.settings = s || {}; if (prevLive !== A.settings.liveResults) bindSelected(true); renderAdmin(); }, () => {}));
+  unsubs.push(api.watchSettings((s) => { A.settings = s || {}; renderAdmin(); }, () => {}));
   unsubs.push(api.watchElections((list) => {
     A.elections = list;
     if (!A.sel || !list.some((e) => e.id === A.sel)) A.sel = list[0]?.id || null;
@@ -558,7 +570,7 @@ async function startAdmin() {
 let boundKey = "";
 function bindSelected(force) {
   const e = selected();
-  const canTally = e && e.status !== "draft" && (e.status === "closed" || A.settings.liveResults);
+  const canTally = e && e.status !== "draft" && e.status === "closed";
   const key = e ? `${e.id}|${e.status}|${canTally}` : "";
   if (key === boundKey && !force) return;
   boundKey = key; clearSel(); A.voters = []; A.tally = null;
@@ -646,12 +658,11 @@ function electionPanel(e) {
 
   let results;
   if (A.tally) {
-    results = `<div class="card"><div class="section-title"><h3>${e.status === "open" ? "লাইভ ফলাফল" : "ফলাফল"}</h3><span>মোট ${bn(sumTally(A.tally))} ভোট</span></div>${resultsList(e, A.tally)}
+    results = `<div class="card"><div class="section-title"><h3>ফলাফল</h3><span>মোট ${bn(sumTally(A.tally))} ভোট</span></div>${resultsList(e, A.tally)}
       ${e.status === "closed" ? `<div class="toggle" style="border-top:1px solid var(--line-2);margin-top:8px"><div class="t"><b>ফলাফল ভোটারদের দেখান</b><span>চালু করলে ভোটারদের লিংকে ফলাফল দেখা যাবে।</span></div><label class="switch"><input type="checkbox" id="sw-public" data-act="sw-public" ${e.resultsPublic ? "checked" : ""} aria-label="ফলাফল প্রকাশ"><i></i></label></div>` : ""}</div>`;
   } else {
-    results = `<div class="locked"><div>${ICON.lockBig}<b>ভোটগ্রহণ শেষ হলে ফলাফল খুলবে</b>গোপনীয়তা রক্ষায় ফলাফল এখন বন্ধ রাখা আছে।</div></div>`;
+    results = `<div class="locked"><div>${ICON.lockBig}<b>ভোটগ্রহণ শেষ হলে ফলাফল নিজে থেকেই দেখা যাবে</b>গোপনীয়তা রক্ষায় ভোট চলাকালীন কেউ, অ্যাডমিনও, ফলাফল দেখতে পারবেন না।</div></div>`;
   }
-  const liveToggle = e.status === "open" ? `<div class="toggle"><div class="t"><b>লাইভ ফলাফল দেখুন</b><span>চালু থাকলে অ্যাডমিনরা ভোট চলাকালীন সংখ্যা দেখবেন। কেউ ভোট দেওয়ার মুহূর্তে সংখ্যা বাড়তে দেখলে কে কাকে দিয়েছেন আন্দাজ করা যেতে পারে, তাই বন্ধ রাখাই নিরাপদ।</span></div><label class="switch"><input type="checkbox" id="sw-live" data-act="sw-live" ${A.settings.liveResults ? "checked" : ""} aria-label="লাইভ ফলাফল"><i></i></label></div>` : "";
 
   const vq = A.voterQ.trim().toLowerCase();
   const vlist = [...A.voters].sort((a, b) => collator.compare(a.name || a.email, b.name || b.email)).filter((v) => !vq || (v.name + " " + v.email).toLowerCase().includes(vq));
@@ -661,7 +672,7 @@ function electionPanel(e) {
     <div class="scroll-box"><ul class="plain-list" id="vlist">${vlist.length ? vlist.map((v) => `<li><div class="who"><b>${esc(v.name || "নাম নেই")}</b><span>${esc(v.email)}</span></div></li>`).join("") : `<li><div class="who"><span>এখনও কেউ ভোট দেননি</span></div></li>`}</ul></div>
     ${notYet.length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:13px;color:var(--ink-2)">এখনও ভোট দেননি: ${bn(notYet.length)} জন</summary><ul class="plain-list">${notYet.map((m) => `<li><div class="who"><b>${esc(m.name || m.email)}</b><span>${esc(m.email)}</span></div></li>`).join("")}</ul></details>` : ""}</div>`;
 
-  return head + stats + share + `<div>${results}${liveToggle ? `<div style="margin-top:4px">${liveToggle}</div>` : ""}</div>` + voters;
+  return head + stats + share + `<div>${results}</div>` + voters;
 }
 
 function actionsFor(e) {
@@ -725,7 +736,7 @@ function renderAdmin() {
   const edTitle = $("#ed-title")?.value, edNames = $("#ed-names")?.value;
   if (A.edit && edTitle !== undefined) { A.edit.title = edTitle; A.edit.text = edNames; }
   const scrollY = window.scrollY;
-  root.innerHTML = demoBar() + `<main class="shell wide">${mast()}${crumb()}${adminBody()}</main>${adminConfirm()}`;
+  root.innerHTML = demoBar() + `<main class="shell wide">${mast()}${crumb()}${adminBody()}</main>${adminConfirm()}${signoutSheet()}`;
   window.scrollTo(0, scrollY);
   if (keep && document.getElementById(keep) && !A.confirm) {
     const el = document.getElementById(keep); el.focus();
@@ -746,14 +757,16 @@ root.addEventListener("click", async (ev) => {
   const t = ev.target.closest("[data-act]");
   if (!t) return;
   const act = t.dataset.act, v = t.dataset.v;
-  if ((act === "sheet-bg" || act === "aconf-bg" || (act === "popup-ok" && t.classList.contains("scrim"))) && ev.target !== t) return;
+  if ((act === "sheet-bg" || act === "aconf-bg" || act === "signout-bg" || (act === "popup-ok" && t.classList.contains("scrim"))) && ev.target !== t) return;
   switch (act) {
     case "signin":
       t.disabled = true;
       if (api.demo) api.demoAs = route === "admin" ? "owner" : "member";
       try { await api.signIn(); } catch (e) { toast(errText(e)); }
       t.disabled = false; break;
-    case "signout": V.justVoted = null; V.popup = null; V.inBallot = null; V.confirming = false; await api.signOut(); break;
+    case "signout": askSignout = true; rerender(); break;
+    case "signout-no": case "signout-bg": askSignout = false; rerender(); break;
+    case "signout-ok": askSignout = false; V.justVoted = null; V.popup = null; V.inBallot = null; V.confirming = false; await api.signOut(); break;
     case "copy-here": copyText(location.href); break;
     case "role": setRoute(v); break;
     case "home": setRoute("home"); break;
@@ -824,7 +837,6 @@ root.addEventListener("click", async (ev) => {
 root.addEventListener("change", (ev) => {
   const t = ev.target;
   if (t.name === "cand") { V.selected = t.value; V.err = ""; const bar = $(".actionbar"); if (bar) bar.outerHTML = actionBar(); else root.insertAdjacentHTML("beforeend", actionBar()); return; }
-  if (t.dataset.act === "sw-live") adminRun(() => api.updateSettings({ liveResults: t.checked }), t.checked ? "লাইভ ফলাফল চালু" : "লাইভ ফলাফল বন্ধ");
   if (t.dataset.act === "sw-public") adminRun(() => api.updateElection(A.sel, { resultsPublic: t.checked }), t.checked ? "ফলাফল প্রকাশ করা হয়েছে" : "ফলাফল লুকানো হয়েছে");
 });
 
@@ -838,6 +850,7 @@ root.addEventListener("input", (ev) => {
 
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return;
+  if (askSignout) { askSignout = false; rerender(); return; }
   if (V.confirming && !V.submitting) { V.confirming = false; renderVoter(); }
   if (A.confirm && !A.busy) { A.confirm = null; renderAdmin(); }
 });
