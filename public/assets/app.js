@@ -479,7 +479,7 @@ function receipt() {
     <h2>আপনার ভোট জমা হয়েছে</h2>
     <p>ধন্যবাদ। আপনি কাকে ভোট দিয়েছেন তা কোথাও সংরক্ষিত হয়নি, শুধু প্রার্থীর মোট ভোট এক বেড়েছে।</p>
     ${more ? `<p style="margin-top:10px"><b>আরও চলমান নির্বাচনে আপনার ভোট দেওয়া বাকি আছে।</b></p>` : ""}
-    <div style="margin-top:18px"><button class="btn primary" data-act="back-list">নির্বাচন পাতায় যান</button></div></div>`;
+    <div style="margin-top:18px"><button class="btn primary" data-act="back-list">চলমান নির্বাচনে ফিরুন</button></div></div>`;
 }
 
 function actionBar() {
