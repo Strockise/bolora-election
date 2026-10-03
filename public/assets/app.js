@@ -264,7 +264,7 @@ const V = { settings: undefined, election: undefined, eid: null, voted: null, me
 
 function startVoter() {
   clearSubs();
-  Object.assign(V, { settings: undefined, election: undefined, eid: null, voted: null, member: null, checkedFor: "", selected: null, query: "", confirming: false, submitting: false, tally: null, err: "" });
+  Object.assign(V, { settings: undefined, election: undefined, eid: undefined, voted: null, member: null, checkedFor: "", selected: null, query: "", confirming: false, submitting: false, tally: null, err: "" });
   let electionUnsub = null, tallyUnsub = null;
   unsubs.push(() => { electionUnsub?.(); tallyUnsub?.(); });
   unsubs.push(api.watchSettings((s) => {
