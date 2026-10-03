@@ -23,7 +23,8 @@
   --shadow-sm: 0 1px 3px rgba(16, 24, 40, .06), 0 1px 2px rgba(16, 24, 40, .04);
   --shadow-lg: 0 20px 40px -12px rgba(16, 24, 40, .18), 0 4px 10px -4px rgba(16, 24, 40, .06);
 
-  --f: "Hind Siliguri", "Noto Sans Bengali", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* সংখ্যার জন্য Noto Sans Bengali (শুধু অঙ্কগুলো লোড হয়), বাকি লেখা Hind Siliguri */
+  --f: "Noto Sans Bengali", "Hind Siliguri", system-ui, -apple-system, "Segoe UI", sans-serif;
   --r-s: 10px;
   --r-m: 14px;
   --r-l: 18px;
@@ -451,11 +452,11 @@ h1 {
 .res:last-child { border-bottom: 0; }
 .res .rk {
   width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
-  background: var(--line-2); color: var(--ink-2); font-size: 12.5px; font-weight: 500;
+  background: var(--line-2); color: var(--ink-2); font-size: 13.5px; font-weight: 600;
 }
 .res .nm { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
-.res .v { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
-.res .v small { font-weight: 400; color: var(--ink-3); font-size: 12.5px; margin-left: 6px; }
+.res .v { font-weight: 600; font-size: 17px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.res .v small { font-weight: 500; color: var(--ink-3); font-size: 13.5px; margin-left: 8px; }
 .res .bar { grid-column: 2 / 4; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
 .res .bar i { display: block; height: 100%; background: #C5D0CB; border-radius: 3px; transition: width .5s ease; }
 .res.lead .bar i { background: var(--accent); }
