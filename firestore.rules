@@ -1,0 +1,137 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────
+//  বলোড়া হিলফুল ফুজুল — নির্বাচন ব্যবস্থার নিরাপত্তা নিয়ম
+//
+//  এই নিয়মগুলো Google-এর সার্ভারে চলে, তাই কেউ ব্রাউজার থেকে
+//  কোড বদলেও এগুলো ভাঙতে পারবে না।
+//
+//  মূল নীতি:
+//   1. এক Google অ্যাকাউন্ট = এক নির্বাচনে একটিই ভোট।
+//   2. কে কাকে ভোট দিয়েছে তা কোথাও সংরক্ষিত হয় না। শুধু প্রত্যেক
+//      প্রার্থীর মোট সংখ্যা (count) এক করে বাড়ে।
+//   3. অ্যাডমিনরাও ভোটের সংখ্যা হাতে বদলাতে পারেন না।
+//   4. ফলাফল ভোট শেষ হওয়ার পর দেখা যায় (অ্যাডমিন চাইলে "লাইভ ফলাফল" চালু করতে পারেন)।
+//
+//  ⚠ নিচের OWNER_EMAIL-এ মূল অ্যাডমিনের ইমেইল দিন (ছোট হাতের অক্ষরে)।
+//    public/config.js-এর ownerEmail-এর সাথে হুবহু মিল থাকতে হবে।
+// ─────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function OWNER_EMAIL() { return 'strockise.official@gmail.com'; }
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function isOwner() { return signedIn() && myEmail() == OWNER_EMAIL(); }
+    function isAdmin() {
+      return isOwner()
+        || (signedIn() && exists(/databases/$(database)/documents/admins/$(myEmail())));
+    }
+
+    function settings() { return get(/databases/$(database)/documents/settings/app).data; }
+    function election(eid) { return get(/databases/$(database)/documents/elections/$(eid)).data; }
+    function boxPath(eid) { return /databases/$(database)/documents/elections/$(eid)/meta/box; }
+    function voterPath(eid) { return /databases/$(database)/documents/elections/$(eid)/voters/$(request.auth.uid); }
+    function tallyPath(eid, cid) { return /databases/$(database)/documents/elections/$(eid)/tally/$(cid); }
+
+    // ভোটার তালিকা চালু থাকলে শুধু তালিকার ইমেইল ভোট দিতে পারবে
+    function allowedVoter() {
+      return signedIn()
+        && (settings().get('restrict', false) != true
+            || exists(/databases/$(database)/documents/members/$(myEmail())));
+    }
+    function canVote(eid) { return allowedVoter() && election(eid).status == 'open'; }
+
+    // এই একই অনুরোধে (batch) ভোটারের রসিদ তৈরি হচ্ছে, আগে ছিল না
+    function votingNow(eid) { return !exists(voterPath(eid)) && existsAfter(voterPath(eid)); }
+
+    // ব্যালট বাক্সে একটিই পছন্দ, আর ঠিক সেই প্রার্থীর সংখ্যা ঠিক ১ বেড়েছে
+    function ballotOk(eid) {
+      let after = getAfter(boxPath(eid)).data;
+      let before = get(boxPath(eid)).data;
+      let p = after.pick;
+      return p in election(eid).candidateIds
+        && after.n != before.n
+        && getAfter(tallyPath(eid, p)).data.count == get(tallyPath(eid, p)).data.count + 1;
+    }
+
+    // ── সাধারণ সেটিংস ─────────────────────────────
+    match /settings/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── অ্যাডমিন তালিকা (শুধু মূল অ্যাডমিন যোগ/বাদ দিতে পারেন) ──
+    match /admins/{email} {
+      allow read: if isAdmin() || (signedIn() && email == myEmail());
+      allow write: if isOwner();
+    }
+
+    // ── ভোটার তালিকা (ঐচ্ছিক) ─────────────────────
+    match /members/{email} {
+      allow read: if isAdmin() || (signedIn() && email == myEmail());
+      allow write: if isAdmin();
+    }
+
+    // ── নির্বাচন ─────────────────────────────────
+    match /elections/{eid} {
+      allow read: if true;
+      allow create: if isAdmin() && request.resource.data.status == 'draft';
+      allow update: if isAdmin()
+        && request.resource.data.status in ['draft', 'open', 'closed']
+        && !(resource.data.status != 'draft' && request.resource.data.status == 'draft')
+        && (resource.data.status == 'draft'
+            || (request.resource.data.candidateIds == resource.data.candidateIds
+                && request.resource.data.candidates == resource.data.candidates));
+      allow delete: if isOwner() && resource.data.status != 'open';
+
+      // ব্যালট বাক্স: কেউ পড়তে পারে না, শুধু নিয়ম যাচাইয়ে ব্যবহার হয়
+      match /meta/box {
+        allow read: if false;
+        allow create: if isAdmin() && request.resource.data.pick == '';
+        allow update: if (canVote(eid)
+              && votingNow(eid)
+              && request.resource.data.keys().hasOnly(['pick', 'n'])
+              && request.resource.data.pick in election(eid).candidateIds
+              && request.resource.data.n != resource.data.n)
+          || (isAdmin() && request.resource.data.pick == '');
+        allow delete: if false;
+      }
+
+      // প্রার্থী-ভিত্তিক মোট ভোট (কে দিয়েছে তা নেই)
+      match /tally/{cid} {
+        allow read: if (isAdmin() && (election(eid).status == 'closed' || settings().get('liveResults', false) == true))
+          || (election(eid).status == 'closed' && election(eid).get('resultsPublic', false) == true);
+        allow create: if isAdmin()
+          && cid in election(eid).candidateIds
+          && request.resource.data.keys().hasOnly(['count'])
+          && request.resource.data.count == 0;
+        allow update: if canVote(eid)
+          && votingNow(eid)
+          && request.resource.data.keys().hasOnly(['count'])
+          && request.resource.data.count == resource.data.count + 1
+          && getAfter(boxPath(eid)).data.pick == cid;
+        allow delete: if false;
+      }
+
+      // কে ভোট দিয়েছেন (কাকে দিয়েছেন তা নয়)। একবার তৈরি হলে আর বদলানো যায় না।
+      match /voters/{uid} {
+        allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+        allow create: if canVote(eid)
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['email', 'name'])
+          && request.resource.data.email == myEmail()
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 100
+          && ballotOk(eid);
+        allow update, delete: if false;
+      }
+    }
+  }
+}
