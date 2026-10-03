@@ -40,12 +40,11 @@ service cloud.firestore {
     function voterPath(eid) { return /databases/$(database)/documents/elections/$(eid)/voters/$(request.auth.uid); }
     function tallyPath(eid, cid) { return /databases/$(database)/documents/elections/$(eid)/tally/$(cid); }
 
-    // ভোটার তালিকা চালু থাকলে শুধু তালিকার ইমেইল ভোট দিতে পারবে
-    function allowedVoter() {
-      return signedIn()
-        && (settings().get('restrict', false) != true
-            || exists(/databases/$(database)/documents/members/$(myEmail())));
+    // শুধু অ্যাডমিনের অনুমোদিত ভোটার (members তালিকা) ভোট দিতে পারবেন
+    function isMember() {
+      return signedIn() && exists(/databases/$(database)/documents/members/$(myEmail()));
     }
+    function allowedVoter() { return isMember(); }
     function canVote(eid) { return allowedVoter() && election(eid).status == 'open'; }
 
     // এই একই অনুরোধে (batch) ভোটারের রসিদ তৈরি হচ্ছে, আগে ছিল না
@@ -79,12 +78,27 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── ভোটার নিবন্ধনের আবেদন ──────────────────
+    // প্রথমবার ভোটার হিসেবে লগইন করলে নিজের আবেদন জমা পড়ে; অ্যাডমিন অনুমোদন/বাতিল করেন।
+    match /requests/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['email', 'name', 'status', 'at'])
+        && request.resource.data.email == myEmail()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.status == 'pending'
+        && request.resource.data.at == request.time;
+      allow update, delete: if isAdmin();
+    }
+
     // ── নির্বাচন ─────────────────────────────────
     match /elections/{eid} {
       // লিংকের কোড (নির্বাচনের id) জানলেই শুধু একটি নির্বাচন খোলা যায়;
       // সব নির্বাচনের তালিকা শুধু অ্যাডমিন দেখতে পারেন।
       allow get: if true;
-      allow list: if isAdmin();
+      allow list: if isAdmin() || (isMember() && resource.data.status == 'open');
       allow create: if isAdmin() && request.resource.data.status == 'draft';
       allow update: if isAdmin()
         && request.resource.data.status in ['draft', 'open', 'closed']
