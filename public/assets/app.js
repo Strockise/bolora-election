@@ -4,7 +4,6 @@
 const C = window.APP_CONFIG || {};
 const ORG = C.orgName || "বলোড়া হিলফুল ফুজুল";
 const ORG_EN = C.orgNameEn || "Bolora Hilf Al-Fudul";
-const OWNER = (C.ownerEmail || "").trim().toLowerCase();
 const FB = C.firebase || {};
 const DEMO = !!C.forceDemo || !FB.apiKey || !FB.projectId;
 const LOGO = C.logoSrc || "assets/logo.png";
@@ -124,7 +123,6 @@ async function firebaseBackend() {
     rejectRequest: (uid) => F.updateDoc(d("requests", uid), { status: "rejected" }),
     deleteRequest: (uid) => F.deleteDoc(d("requests", uid)),
     async isAdmin(user) {
-      if (user.email === OWNER) return true;
       try { return (await F.getDoc(d("admins", user.email))).exists(); } catch { return false; }
     },
     async castVote(eid, cid, user) {
@@ -219,7 +217,7 @@ function demoBackend() {
       { uid: "r2", email: "nasima.b@gmail.com", name: "নাসিমা বেগম", status: "pending", at: 2 },
       { uid: "r3", email: "unknown.user@gmail.com", name: "Unknown User", status: "rejected", at: 1 },
     ],
-    admins: [{ email: "secretary.bhf@gmail.com" }],
+    admins: [{ email: "admin.demo@gmail.com" }, { email: "secretary.bhf@gmail.com" }],
   };
   const subs = new Set();
   const sub = (fn) => { subs.add(fn); queueMicrotask(fn); return () => subs.delete(fn); };
@@ -234,7 +232,7 @@ function demoBackend() {
     async signIn() {
       await wait(400);
       st.user = this.demoAs === "owner"
-        ? { uid: "owner", email: OWNER || "admin@gmail.com", name: "অ্যাডমিন" }
+        ? { uid: "admin", email: "admin.demo@gmail.com", name: "অ্যাডমিন" }
         : { uid: "me", email: "member.demo@gmail.com", name: "ডেমো সদস্য" };
       authCb?.(st.user);
     },
@@ -254,7 +252,7 @@ function demoBackend() {
     async approveRequest(r) { st.members.push({ email: r.email, name: r.name, photo: r.photo || "" }); st.requests = st.requests.filter((x) => x.uid !== r.uid); emit(); },
     async deleteRequest(uid) { st.requests = st.requests.filter((x) => x.uid !== uid); emit(); },
     async rejectRequest(uid) { const r = st.requests.find((x) => x.uid === uid); if (r) r.status = "rejected"; emit(); },
-    isAdmin: async (u) => u.email === OWNER || u.uid === "owner" || st.admins.some((a) => a.email === u.email),
+    isAdmin: async (u) => st.admins.some((a) => a.email === u.email),
     async castVote(eid, cid, user) {
       await wait(700);
       const e = st.elections[eid];
@@ -703,12 +701,11 @@ function adminBody() {
   if (user === undefined) return `<div class="spin"></div>`;
   if (!user) return `<section class="head"><span class="status">পরিচালনা</span><h1>অ্যাডমিন প্যানেল</h1><p class="lede">শুধু অনুমতিপ্রাপ্ত ইমেইল দিয়ে প্রবেশ করা যাবে।</p></section><div class="card stack" style="max-width:420px">${signInButton()}</div>`;
   if (A.isAdmin === undefined) return `<div class="spin"></div>`;
-  if (!A.isAdmin) return `<section class="head"><h1>প্রবেশাধিকার নেই</h1><p class="lede"><b>${esc(user.email)}</b> এই প্যানেলের অ্যাডমিন হিসেবে যুক্ত নেই। মূল অ্যাডমিন আপনার ইমেইল যোগ করলে প্রবেশ করতে পারবেন।</p></section><div class="row-gap"><button class="btn primary" data-act="role" data-v="vote">ভোটার পাতায় যান</button><button class="btn" data-act="signout">অন্য অ্যাকাউন্ট দিয়ে প্রবেশ করুন</button></div>`;
-  const isOwner = user.email === OWNER || (api.demo && user.uid === "owner");
+  if (!A.isAdmin) return `<section class="head"><h1>প্রবেশাধিকার নেই</h1><p class="lede"><b>${esc(user.email)}</b> এই প্যানেলের অ্যাডমিন হিসেবে যুক্ত নেই। যে কোনো অ্যাডমিন আপনার ইমেইল যোগ করলে প্রবেশ করতে পারবেন।</p></section><div class="row-gap"><button class="btn primary" data-act="role" data-v="vote">ভোটার পাতায় যান</button><button class="btn" data-act="signout">অন্য অ্যাকাউন্ট দিয়ে প্রবেশ করুন</button></div>`;
   const pend = A.requests.filter((r) => r.status === "pending").length;
   const tabs = [["elections", "নির্বাচন"], ["voters", "ভোটার" + (pend ? ` <span class="badge">${bn(pend)}</span>` : "")], ["admins", "অ্যাডমিন"]];
   return `<nav class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${A.tab === k}" data-act="tab" data-v="${k}">${l}</button>`).join("")}</nav>
-    ${A.tab === "elections" ? electionsTab() : A.tab === "voters" ? votersTab() : adminsTab(isOwner)}`;
+    ${A.tab === "elections" ? electionsTab() : A.tab === "voters" ? votersTab() : adminsTab()}`;
 }
 
 function electionsTab() {
@@ -846,14 +843,15 @@ function votersTab() {
   </div>`;
 }
 
-function adminsTab(isOwner) {
+function adminsTab() {
+  const list = [...A.admins].sort((a, b) => (a.email === user.email ? -1 : b.email === user.email ? 1 : a.email.localeCompare(b.email)));
   return `<div style="padding-top:24px;max-width:680px" class="stack">
-    <div class="card"><div class="section-title"><h3>মূল অ্যাডমিন</h3></div><ul class="plain-list"><li><div class="who"><b>${esc(OWNER || "—")}</b><span>সব নিয়ন্ত্রণ · অন্য অ্যাডমিন যোগ/বাদ দিতে পারেন</span></div></li></ul></div>
-    ${A.isAdmin ? `<div class="card stack"><div class="section-title"><h3>অ্যাডমিন যোগ করুন</h3><span>যাঁর Gmail দেবেন তিনি এই প্যানেলে ঢুকতে পারবেন</span></div>
+    <div class="card stack"><div class="section-title"><h3>অ্যাডমিন যোগ করুন</h3><span>যাঁর Gmail দেবেন তিনি এই প্যানেলে ঢুকতে পারবেন</span></div>
       <div class="row-gap"><input class="input" id="adm-email" type="email" placeholder="name@gmail.com" style="flex:1;min-width:200px"><button class="btn primary sm" data-act="add-admin">যোগ করুন</button></div>
-      <div class="note">${ICON.info}<div>অ্যাডমিনরা নির্বাচন চালু/বন্ধ ও ভোটার তালিকা দেখতে পারেন, কিন্তু কে কাকে ভোট দিয়েছেন তা দেখতে পারেন না, আর ভোটের সংখ্যাও বদলাতে পারেন না। তাঁকে এই লিংকটি পাঠান: <b>${esc(baseLink())}</b> — সেখানে <b>অ্যাডমিন</b> বেছে নিয়ে নিজের Gmail দিয়ে প্রবেশ করবেন।</div></div></div>` : ""}
-    <div class="card"><div class="section-title"><h3>অন্যান্য অ্যাডমিন</h3><span>${bn(A.admins.length)} জন</span></div>
-      <ul class="plain-list">${A.admins.length ? A.admins.map((a) => `<li><div class="who"><b>${esc(a.email)}</b></div>${a.email !== user.email ? `<button class="linkish" data-act="ask-rm-admin" data-v="${esc(a.email)}">বাদ দিন</button>` : `<span class="chip chip-soft">আপনি</span>`}</li>`).join("") : `<li><div class="who"><span>আর কেউ যুক্ত নেই</span></div></li>`}</ul></div></div>`;
+      <div class="note">${ICON.info}<div>সব অ্যাডমিনের ক্ষমতা সমান: সবাই নির্বাচন চালু/বন্ধ, ভোটার অনুমোদন এবং অ্যাডমিন যোগ বা বাদ দিতে পারেন। কেউ কে কাকে ভোট দিয়েছেন তা দেখতে পারেন না, আর ভোটের সংখ্যাও বদলাতে পারেন না। নতুন অ্যাডমিনকে এই লিংকটি পাঠান: <b>${esc(baseLink())}</b> — সেখানে <b>অ্যাডমিন</b> বেছে নিয়ে নিজের Gmail দিয়ে প্রবেশ করবেন।</div></div></div>
+    <div class="card"><div class="section-title"><h3>অ্যাডমিন</h3><span>${bn(list.length)} জন</span></div>
+      <ul class="plain-list">${list.map((a) => `<li><div class="who"><b>${esc(a.email)}</b></div>${a.email !== user.email ? `<button class="linkish" data-act="ask-rm-admin" data-v="${esc(a.email)}">বাদ দিন</button>` : `<span class="chip chip-soft">আপনি</span>`}</li>`).join("")}</ul>
+      <p class="hint" style="margin:10px 0 0">নিজেকে বাদ দেওয়া যায় না, তাই সবসময় অন্তত একজন অ্যাডমিন থাকবেন।</p></div></div>`;
 }
 
 function adminConfirm() {
@@ -956,7 +954,6 @@ root.addEventListener("click", async (ev) => {
     case "add-admin": {
       const em = ($("#adm-email").value.match(EMAIL_RE) || [""])[0].toLowerCase();
       if (!em) { toast("সঠিক ইমেইল লিখুন"); break; }
-      if (em === OWNER) { toast("ইনি ইতিমধ্যে মূল অ্যাডমিন"); break; }
       if (A.admins.some((a) => a.email === em)) { toast("ইনি ইতিমধ্যে অ্যাডমিন"); break; }
       adminRun(() => api.addAdmin(em), "অ্যাডমিন যোগ হয়েছে"); break;
     }

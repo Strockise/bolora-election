@@ -13,14 +13,11 @@ rules_version = '2';
 //   3. অ্যাডমিনরাও ভোটের সংখ্যা হাতে বদলাতে পারেন না।
 //   4. ফলাফল শুধু ভোটগ্রহণ শেষ হওয়ার পর দেখা যায় (তখনই সবার জন্য প্রকাশিত); ভোট চলাকালীন অ্যাডমিনও দেখতে পারেন না।
 //
-//  ⚠ নিচের OWNER_EMAIL-এ মূল অ্যাডমিনের ইমেইল দিন (ছোট হাতের অক্ষরে)।
-//    public/config.js-এর ownerEmail-এর সাথে হুবহু মিল থাকতে হবে।
+//  অ্যাডমিন: admins সংগ্রহে যাঁদের Gmail আছে, সবার ক্ষমতা সমান।
 // ─────────────────────────────────────────────────────────────
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function OWNER_EMAIL() { return 'strockise.official@gmail.com'; }
 
     function signedIn() {
       return request.auth != null
@@ -28,10 +25,9 @@ service cloud.firestore {
         && request.auth.token.email_verified == true;
     }
     function myEmail() { return request.auth.token.email.lower(); }
-    function isOwner() { return signedIn() && myEmail() == OWNER_EMAIL(); }
+    // অ্যাডমিন = admins তালিকায় যাঁর Gmail আছে। সব অ্যাডমিনের ক্ষমতা সমান।
     function isAdmin() {
-      return isOwner()
-        || (signedIn() && exists(/databases/$(database)/documents/admins/$(myEmail())));
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(myEmail()));
     }
 
     function settings() { return get(/databases/$(database)/documents/settings/app).data; }
@@ -70,7 +66,7 @@ service cloud.firestore {
 
     // ── অ্যাডমিন তালিকা ──
     // যে কোনো অ্যাডমিন নতুন অ্যাডমিন যোগ করতে ও অন্য অ্যাডমিনকে বাদ দিতে পারেন
-    // (নিজেকে বাদ দেওয়া যায় না; মূল অ্যাডমিন এই তালিকায় থাকেন না, তাই তাঁকে বাদ দেওয়া যায় না)
+    // (নিজেকে বাদ দেওয়া যায় না, তাই সবসময় অন্তত একজন অ্যাডমিন থাকেন)
     match /admins/{email} {
       allow read: if isAdmin() || (signedIn() && email == myEmail());
       allow create, update: if isAdmin() && email == email.lower() && email.matches('^[^@\\s]+@[^@\\s]+$');
