@@ -167,7 +167,24 @@ async function firebaseBackend() {
       b.set(d("elections", e.id, "meta", "box"), { pick: "", n: rid(20) });
       await b.commit();
     },
-    deleteElection: (eid) => F.deleteDoc(d("elections", eid)),
+    async deleteElection(eid) {
+      // নির্বাচনের সাথে তার ভোটের হিসাব, ভোটারের রসিদ ও ব্যালট বাক্সও এক সাথে মুছে ফেলা হয়
+      const [voters, tally] = await Promise.all([
+        F.getDocs(col("elections", eid, "voters")).catch(() => ({ docs: [] })),
+        F.getDocs(col("elections", eid, "tally")).catch(() => ({ docs: [] })),
+      ]);
+      const refs = [...voters.docs.map((x) => x.ref), ...tally.docs.map((x) => x.ref), d("elections", eid, "meta", "box")];
+      try {
+        if (refs.length > 450) throw new Error("too many");
+        const b = F.writeBatch(db);
+        refs.forEach((r) => b.delete(r));
+        b.delete(d("elections", eid));
+        await b.commit();
+      } catch {
+        // কোনো কারণে পুরোটা একসাথে না গেলে অন্তত নির্বাচনটি মুছে দেওয়া হয়
+        await F.deleteDoc(d("elections", eid));
+      }
+    },
     async addMembers(list) {
       for (let i = 0; i < list.length; i += 400) {
         const b = F.writeBatch(db);
@@ -784,17 +801,16 @@ function electionPanel(e) {
 }
 
 function actionsFor(e) {
-  const isOwner = user.email === OWNER || (api.demo && user.uid === "owner");
   const b = [];
   if (e.status === "draft") {
     b.push(`<button class="btn sm" data-act="edit">সম্পাদনা</button>`);
-    if (isOwner) b.push(`<button class="btn sm danger" data-act="ask-delete">মুছুন</button>`);
+    b.push(`<button class="btn sm danger" data-act="ask-delete">${ICON.trash} মুছুন</button>`);
     b.push(`<button class="btn sm primary" data-act="ask-open" ${e.candidates.length < 2 ? "disabled" : ""}>ভোটগ্রহণ শুরু করুন</button>`);
   } else if (e.status === "open") {
     b.push(`<button class="btn sm primary" data-act="ask-close">ভোটগ্রহণ শেষ করুন</button>`);
   } else {
     b.push(`<button class="btn sm" data-act="ask-reopen">আবার চালু করুন</button>`);
-    if (isOwner) b.push(`<button class="btn sm danger" data-act="ask-delete">মুছুন</button>`);
+    b.push(`<button class="btn sm danger" data-act="ask-delete">${ICON.trash} মুছুন</button>`);
   }
   return b.join("");
 }
@@ -932,7 +948,7 @@ root.addEventListener("click", async (ev) => {
     case "ask-open": { const e = selected(); A.confirm = { title: "ভোটগ্রহণ শুরু করবেন?", body: `“${esc(e.title)}”-এ ${bn(e.candidates.length)} জন প্রার্থী। শুরু করার পর প্রার্থী তালিকা আর বদলানো যাবে না, আর ভোটাররা লিংকে এই নির্বাচনটি দেখবেন।`, ok: "শুরু করুন", run: () => api.openElection(e), msg: "ভোটগ্রহণ শুরু হয়েছে" }; renderAdmin(); break; }
     case "ask-reopen": { const e = selected(); A.confirm = { title: "আবার ভোটগ্রহণ চালু করবেন?", body: "যাঁরা আগে ভোট দিয়েছেন তাঁরা আবার দিতে পারবেন না। আগের সব ভোট যেমন ছিল তেমনই থাকবে।", ok: "চালু করুন", run: () => api.openElection(e), msg: "আবার চালু হয়েছে" }; renderAdmin(); break; }
     case "ask-close": { const e = selected(); A.confirm = { title: "ভোটগ্রহণ শেষ করবেন?", body: `এখন পর্যন্ত ${bn(A.voters.length)} জন ভোট দিয়েছেন। শেষ করার পর আর কেউ ভোট দিতে পারবেন না, আর ফলাফল সঙ্গে সঙ্গে সব ভোটারের জন্য প্রকাশ হয়ে যাবে।`, ok: "শেষ করুন", run: () => api.closeElection(e), msg: "ভোটগ্রহণ শেষ, ফলাফল প্রকাশিত হয়েছে" }; renderAdmin(); break; }
-    case "ask-delete": { const e = selected(); A.confirm = { title: "নির্বাচনটি মুছবেন?", body: `“${esc(e.title)}” তালিকা থেকে মুছে যাবে। এটি ফেরানো যাবে না।`, ok: "মুছে ফেলুন", danger: true, run: async () => { await api.deleteElection(e.id); A.sel = null; }, msg: "মুছে ফেলা হয়েছে" }; renderAdmin(); break; }
+    case "ask-delete": { const e = selected(); A.confirm = { title: "নির্বাচনটি মুছবেন?", body: e.status === "draft" ? `“${esc(e.title)}” তালিকা থেকে মুছে যাবে। এটি ফেরানো যাবে না।` : `“${esc(e.title)}”-এর ফলাফল, ভোটের হিসাব আর কারা ভোট দিয়েছেন সেই তালিকা চিরতরে মুছে যাবে। ভোটারদের পাতা থেকেও ফলাফল সরে যাবে। এটি ফেরানো যাবে না।`, ok: "মুছে ফেলুন", danger: true, run: async () => { await api.deleteElection(e.id); A.sel = null; }, msg: "মুছে ফেলা হয়েছে" }; renderAdmin(); break; }
     case "aconf-ok": { const c = A.confirm; await adminRun(c.run, c.msg); break; }
     case "aconf-no": case "aconf-bg": if (!A.busy) { A.confirm = null; renderAdmin(); } break;
     case "copy-link": copyText(electionLink(v)); break;

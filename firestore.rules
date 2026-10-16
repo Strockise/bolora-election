@@ -38,6 +38,8 @@ service cloud.firestore {
     function election(eid) { return get(/databases/$(database)/documents/elections/$(eid)).data; }
     function boxPath(eid) { return /databases/$(database)/documents/elections/$(eid)/meta/box; }
     function voterPath(eid) { return /databases/$(database)/documents/elections/$(eid)/voters/$(request.auth.uid); }
+    // একই অনুরোধে নির্বাচনটিও মুছে যাচ্ছে কিনা (তখনই শুধু ভেতরের তথ্য মোছা যায়)
+    function electionGone(eid) { return !existsAfter(/databases/$(database)/documents/elections/$(eid)); }
     function tallyPath(eid, cid) { return /databases/$(database)/documents/elections/$(eid)/tally/$(cid); }
 
     // শুধু অ্যাডমিনের অনুমোদিত ভোটার (members তালিকা) ভোট দিতে পারবেন
@@ -113,7 +115,8 @@ service cloud.firestore {
         && (resource.data.status == 'draft'
             || (request.resource.data.candidateIds == resource.data.candidateIds
                 && request.resource.data.candidates == resource.data.candidates));
-      allow delete: if isOwner() && resource.data.status != 'open';
+      // যে কোনো অ্যাডমিন খসড়া বা শেষ হওয়া নির্বাচন মুছতে পারেন (চলমান নির্বাচন নয়)
+      allow delete: if isAdmin() && resource.data.status != 'open';
 
       // ব্যালট বাক্স: কেউ পড়তে পারে না, শুধু নিয়ম যাচাইয়ে ব্যবহার হয়
       match /meta/box {
@@ -125,7 +128,7 @@ service cloud.firestore {
               && request.resource.data.pick in election(eid).candidateIds
               && request.resource.data.n != resource.data.n)
           || (isAdmin() && request.resource.data.pick == '');
-        allow delete: if false;
+        allow delete: if isAdmin() && electionGone(eid);
       }
 
       // প্রার্থী-ভিত্তিক মোট ভোট (কে দিয়েছে তা নেই)
@@ -142,7 +145,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['count'])
           && request.resource.data.count == resource.data.count + 1
           && getAfter(boxPath(eid)).data.pick == cid;
-        allow delete: if false;
+        allow delete: if isAdmin() && electionGone(eid);
       }
 
       // কে ভোট দিয়েছেন (কাকে দিয়েছেন তা নয়)। একবার তৈরি হলে আর বদলানো যায় না।
@@ -155,7 +158,8 @@ service cloud.firestore {
           && request.resource.data.name is string
           && request.resource.data.name.size() <= 100
           && ballotOk(eid);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isAdmin() && electionGone(eid);
       }
     }
   }
