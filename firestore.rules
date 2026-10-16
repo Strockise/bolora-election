@@ -68,10 +68,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ── অ্যাডমিন তালিকা (শুধু মূল অ্যাডমিন যোগ/বাদ দিতে পারেন) ──
+    // ── অ্যাডমিন তালিকা ──
+    // যে কোনো অ্যাডমিন নতুন অ্যাডমিন যোগ করতে ও অন্য অ্যাডমিনকে বাদ দিতে পারেন
+    // (নিজেকে বাদ দেওয়া যায় না; মূল অ্যাডমিন এই তালিকায় থাকেন না, তাই তাঁকে বাদ দেওয়া যায় না)
     match /admins/{email} {
       allow read: if isAdmin() || (signedIn() && email == myEmail());
-      allow write: if isOwner();
+      allow create, update: if isAdmin() && email == email.lower() && email.matches('^[^@\\s]+@[^@\\s]+$');
+      allow delete: if isAdmin() && email != myEmail();
     }
 
     // ── ভোটার তালিকা (ঐচ্ছিক) ─────────────────────

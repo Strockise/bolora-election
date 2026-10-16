@@ -849,11 +849,11 @@ function votersTab() {
 function adminsTab(isOwner) {
   return `<div style="padding-top:24px;max-width:680px" class="stack">
     <div class="card"><div class="section-title"><h3>মূল অ্যাডমিন</h3></div><ul class="plain-list"><li><div class="who"><b>${esc(OWNER || "—")}</b><span>সব নিয়ন্ত্রণ · অন্য অ্যাডমিন যোগ/বাদ দিতে পারেন</span></div></li></ul></div>
-    ${isOwner ? `<div class="card stack"><div class="section-title"><h3>অ্যাডমিন যোগ করুন</h3><span>যাঁর Gmail দেবেন তিনি এই প্যানেলে ঢুকতে পারবেন</span></div>
+    ${A.isAdmin ? `<div class="card stack"><div class="section-title"><h3>অ্যাডমিন যোগ করুন</h3><span>যাঁর Gmail দেবেন তিনি এই প্যানেলে ঢুকতে পারবেন</span></div>
       <div class="row-gap"><input class="input" id="adm-email" type="email" placeholder="name@gmail.com" style="flex:1;min-width:200px"><button class="btn primary sm" data-act="add-admin">যোগ করুন</button></div>
       <div class="note">${ICON.info}<div>অ্যাডমিনরা নির্বাচন চালু/বন্ধ ও ভোটার তালিকা দেখতে পারেন, কিন্তু কে কাকে ভোট দিয়েছেন তা দেখতে পারেন না, আর ভোটের সংখ্যাও বদলাতে পারেন না। তাঁকে এই লিংকটি পাঠান: <b>${esc(baseLink())}</b> — সেখানে <b>অ্যাডমিন</b> বেছে নিয়ে নিজের Gmail দিয়ে প্রবেশ করবেন।</div></div></div>` : ""}
     <div class="card"><div class="section-title"><h3>অন্যান্য অ্যাডমিন</h3><span>${bn(A.admins.length)} জন</span></div>
-      <ul class="plain-list">${A.admins.length ? A.admins.map((a) => `<li><div class="who"><b>${esc(a.email)}</b></div>${isOwner ? `<button class="linkish" data-act="rm-admin" data-v="${esc(a.email)}">বাদ দিন</button>` : ""}</li>`).join("") : `<li><div class="who"><span>আর কেউ যুক্ত নেই</span></div></li>`}</ul></div></div>`;
+      <ul class="plain-list">${A.admins.length ? A.admins.map((a) => `<li><div class="who"><b>${esc(a.email)}</b></div>${a.email !== user.email ? `<button class="linkish" data-act="ask-rm-admin" data-v="${esc(a.email)}">বাদ দিন</button>` : `<span class="chip chip-soft">আপনি</span>`}</li>`).join("") : `<li><div class="who"><span>আর কেউ যুক্ত নেই</span></div></li>`}</ul></div></div>`;
 }
 
 function adminConfirm() {
@@ -957,9 +957,11 @@ root.addEventListener("click", async (ev) => {
       const em = ($("#adm-email").value.match(EMAIL_RE) || [""])[0].toLowerCase();
       if (!em) { toast("সঠিক ইমেইল লিখুন"); break; }
       if (em === OWNER) { toast("ইনি ইতিমধ্যে মূল অ্যাডমিন"); break; }
+      if (A.admins.some((a) => a.email === em)) { toast("ইনি ইতিমধ্যে অ্যাডমিন"); break; }
       adminRun(() => api.addAdmin(em), "অ্যাডমিন যোগ হয়েছে"); break;
     }
     case "rm-admin": adminRun(() => api.removeAdmin(v), "অ্যাডমিন বাদ দেওয়া হয়েছে"); break;
+    case "ask-rm-admin": A.confirm = { title: "অ্যাডমিন বাদ দেবেন?", body: `<b>${esc(v)}</b> আর অ্যাডমিন প্যানেলে ঢুকতে পারবেন না। দরকার হলে পরে আবার যোগ করা যাবে।`, ok: "বাদ দিন", danger: true, run: () => api.removeAdmin(v), msg: "অ্যাডমিন বাদ দেওয়া হয়েছে" }; renderAdmin(); break;
   }
 });
 
